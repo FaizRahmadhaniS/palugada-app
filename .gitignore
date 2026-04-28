@@ -1,0 +1,10 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+Add-Content .gitignore "`npayment-config.json"
+Add-Content .gitignore "general-config.json"

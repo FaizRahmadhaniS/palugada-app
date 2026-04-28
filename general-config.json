@@ -1,0 +1,9 @@
+{
+  "koperasiName": "Koperasi Palugada",
+  "koperasiAddress": "Jl. Raya No. 123, Jakarta",
+  "koperasiPhone": "021-12345678",
+  "loanInterestRate": 1.5,
+  "withdrawalAdminFee": 5000,
+  "minDeposit": 50000,
+  "enableOtp": false
+}
