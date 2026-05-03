@@ -315,8 +315,8 @@ export default function MemberDashboard({ user }: { user: any }) {
             </div>
           </div>
           <div>
-            <p className="text-blue-100 text-sm font-medium mb-1">Total Simpanan</p>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Rp {totalSavings.toLocaleString('id-ID')}</h2>
+            <p className={cn(isDark ? "text-blue-200" : "text-blue-700", "text-sm font-medium mb-1")}>Total Simpanan</p>
+            <h2 className={cn(isDark ? "text-white" : "text-slate-900", "text-2xl sm:text-3xl font-bold tracking-tight")}>Rp {totalSavings.toLocaleString('id-ID')}</h2>
           </div>
         </div>
 
@@ -327,8 +327,8 @@ export default function MemberDashboard({ user }: { user: any }) {
             </div>
           </div>
           <div>
-            <p className="text-rose-100 text-sm font-medium mb-1">Sisa Tagihan Pinjaman</p>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Rp {totalRemainingLoan.toLocaleString('id-ID')}</h2>
+            <p className={cn(isDark ? "text-rose-200" : "text-rose-700", "text-sm font-medium mb-1")}>Sisa Tagihan Pinjaman</p>
+            <h2 className={cn(isDark ? "text-white" : "text-slate-900", "text-2xl sm:text-3xl font-bold tracking-tight")}>Rp {totalRemainingLoan.toLocaleString('id-ID')}</h2>
           </div>
         </div>
 
@@ -339,8 +339,8 @@ export default function MemberDashboard({ user }: { user: any }) {
             </div>
           </div>
           <div>
-            <p className="text-emerald-100 text-sm font-medium mb-1">SHU Diterima</p>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Rp {(user.total_shu || 0).toLocaleString('id-ID')}</h2>
+            <p className={cn(isDark ? "text-emerald-200" : "text-emerald-700", "text-sm font-medium mb-1")}>SHU Diterima</p>
+            <h2 className={cn(isDark ? "text-white" : "text-slate-900", "text-2xl sm:text-3xl font-bold tracking-tight")}>Rp {(user.total_shu || 0).toLocaleString('id-ID')}</h2>
           </div>
         </div>
 

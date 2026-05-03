@@ -119,12 +119,12 @@ export default function AdvancedFiltering({ user }: { user: any }) {
         {/* Data Type Selection */}
         <div className="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
           <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 mb-3">Tipe Data</p>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
             {['members', 'loans', 'savings'].map(type => (
               <button
                 key={type}
                 onClick={() => setFilters({ ...filters, type: type as 'members' | 'loans' | 'savings' })}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                className={`flex-1 min-w-[90px] px-4 py-2 rounded-lg font-semibold transition-all text-sm ${
                   filters.type === type
                     ? 'bg-indigo-600 text-white'
                     : 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white border border-indigo-200 dark:border-indigo-800'
