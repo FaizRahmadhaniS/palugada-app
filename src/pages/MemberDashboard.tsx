@@ -42,7 +42,7 @@ export default function MemberDashboard({ user }: { user: any }) {
     }
 
     const safeFetch = (url: string) => 
-      fetch(url).then(res => {
+      fetch(url, { credentials: 'include' }).then(res => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
@@ -300,7 +300,7 @@ export default function MemberDashboard({ user }: { user: any }) {
             <MessageSquareWarning size={16} />
             Pengaduan
           </a>
-          <a href="/settings" className={cn(isDark ? "bg-white/[0.05] hover:bg-white/[0.08] text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700", "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors")}>
+          <a href="/profile" className={cn(isDark ? "bg-white/[0.05] hover:bg-white/[0.08] text-slate-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700", "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors")}>
             <User size={16} />
             Profil
           </a>
@@ -310,8 +310,8 @@ export default function MemberDashboard({ user }: { user: any }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className={cn(isDark ? "bg-[#161a23] border border-white/[0.06]" : "bg-white border border-slate-200 shadow-sm", "rounded-2xl p-5")}>
           <div className="flex justify-between items-start mb-8">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-              <Wallet size={24} className="text-white" />
+            <div className={cn(isDark ? "bg-white/20" : "bg-blue-100", "p-3 rounded-2xl")}>
+              <Wallet size={24} className={isDark ? "text-white" : "text-blue-600"} />
             </div>
           </div>
           <div>
@@ -322,8 +322,8 @@ export default function MemberDashboard({ user }: { user: any }) {
 
         <div className={cn(isDark ? "bg-[#161a23] border border-white/[0.06]" : "bg-white border border-slate-200 shadow-sm", "rounded-2xl p-5")}>
           <div className="flex justify-between items-start mb-8">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-              <HandCoins size={24} className="text-white" />
+            <div className={cn(isDark ? "bg-white/20" : "bg-rose-100", "p-3 rounded-2xl")}>
+              <HandCoins size={24} className={isDark ? "text-white" : "text-rose-600"} />
             </div>
           </div>
           <div>
@@ -334,8 +334,8 @@ export default function MemberDashboard({ user }: { user: any }) {
 
         <div className={cn(isDark ? "bg-[#161a23] border border-white/[0.06]" : "bg-white border border-slate-200 shadow-sm", "rounded-2xl p-5")}>
           <div className="flex justify-between items-start mb-8">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-              <TrendingUp size={24} className="text-white" />
+            <div className={cn(isDark ? "bg-white/20" : "bg-emerald-100", "p-3 rounded-2xl")}>
+              <TrendingUp size={24} className={isDark ? "text-white" : "text-emerald-600"} />
             </div>
           </div>
           <div>
@@ -346,13 +346,13 @@ export default function MemberDashboard({ user }: { user: any }) {
 
         <div className={cn(isDark ? "bg-[#161a23] border border-white/[0.06]" : "bg-white border border-slate-200 shadow-sm", "rounded-2xl p-5")}>
           <div className="flex justify-between items-start mb-8">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-              <MessageSquareWarning size={24} className="text-white" />
+            <div className={cn(isDark ? "bg-white/20" : "bg-amber-100", "p-3 rounded-2xl")}>
+              <MessageSquareWarning size={24} className={isDark ? "text-white" : "text-amber-600"} />
             </div>
           </div>
           <div>
-            <p className="text-amber-100 text-sm font-medium mb-1">Laporan Dibuat</p>
-            <h2 className="text-3xl font-bold tracking-tight">{reports.length}</h2>
+            <p className={cn(isDark ? "text-amber-200" : "text-amber-700", "text-sm font-medium mb-1")}>Laporan Dibuat</p>
+            <h2 className={cn(isDark ? "text-white" : "text-slate-900", "text-2xl sm:text-3xl font-bold tracking-tight")}>{reports.length}</h2>
           </div>
         </div>
       </div>

@@ -49,7 +49,7 @@ export default function Savings({ user }: { user?: any }) {
 
   useEffect(() => {
     if (!user) {
-      fetch('/api/auth/me').then(res => res.json()).then(data => setCurrentUser(data.user));
+      fetch('/api/auth/me', { credentials: 'include' }).then(res => res.json()).then(data => setCurrentUser(data.user));
     }
     fetchSavings();
   }, [user]);
@@ -57,7 +57,7 @@ export default function Savings({ user }: { user?: any }) {
   useEffect(() => {
     if (!isAdmin && currentUser) {
       const safeFetch = (url: string) => 
-        fetch(url).then(res => {
+        fetch(url, { credentials: 'include' }).then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           const contentType = res.headers.get("content-type");
           if (!contentType || !contentType.includes("application/json")) {
@@ -112,7 +112,7 @@ export default function Savings({ user }: { user?: any }) {
     setDepositMessage(null);
 
     try {
-      const paymentRes = await fetch('/api/payment/create', {
+      const paymentRes = await fetch('/api/payment/create', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,7 +138,7 @@ export default function Savings({ user }: { user?: any }) {
           for (const scheduleId of selectedSchedules) {
             const schedule = schedules.find(s => s.id === scheduleId);
             if (schedule) {
-              await fetch('/api/loan_repayments', {
+              await fetch('/api/loan_repayments', { credentials: 'include',
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -155,7 +155,7 @@ export default function Savings({ user }: { user?: any }) {
             }
           }
         } else {
-          await fetch('/api/finance', {
+          await fetch('/api/finance', { credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -181,7 +181,7 @@ export default function Savings({ user }: { user?: any }) {
 
   const fetchSavings = async () => {
     try {
-      const res = await fetch('/api/savings');
+      const res = await fetch('/api/savings', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch savings');
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -525,20 +525,22 @@ export default function Savings({ user }: { user?: any }) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Pokok</p>
-                <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">Rp 100.000</h3>
-                <p className="text-[10px] text-emerald-600 font-bold mt-2 uppercase tracking-tighter">✓ Sudah Dibayar</p>
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  Rp {savings.filter(s => (s.description || s.type || '').toLowerCase().includes('pokok')).reduce((sum, s) => sum + (s.amount || 0), 0).toLocaleString('id-ID') || '0'}
+                </h3>
+                <p className="text-[10px] text-emerald-600 font-bold mt-2 uppercase tracking-tighter">✓ Simpanan Awal</p>
               </div>
               <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Wajib</p>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                  Rp {savings.filter(s => s.type?.includes('Wajib')).reduce((sum, s) => sum + (s.amount || 0), 0).toLocaleString('id-ID')}
+                  Rp {savings.filter(s => (s.description || s.type || '').toLowerCase().includes('wajib')).reduce((sum, s) => sum + (s.amount || 0), 0).toLocaleString('id-ID')}
                 </h3>
                 <p className="text-[10px] text-blue-600 font-bold mt-2 uppercase tracking-tighter">Bulanan</p>
               </div>
               <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Sukarela</p>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                  Rp {savings.filter(s => s.type?.includes('Sukarela')).reduce((sum, s) => sum + (s.amount || 0), 0).toLocaleString('id-ID')}
+                  Rp {savings.filter(s => (s.description || s.type || '').toLowerCase().includes('sukarela')).reduce((sum, s) => sum + (s.amount || 0), 0).toLocaleString('id-ID')}
                 </h3>
                 <p className="text-[10px] text-purple-600 font-bold mt-2 uppercase tracking-tighter">Fleksibel</p>
               </div>
@@ -692,4 +694,3 @@ export default function Savings({ user }: { user?: any }) {
     </motion.div>
   );
 }
-

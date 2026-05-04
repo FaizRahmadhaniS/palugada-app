@@ -24,24 +24,44 @@ export default function MemberReports({ user }: { user: any }) {
       return;
     }
 
-    fetch(`/api/member_payments/${user.id}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new TypeError("Response format tidak valid");
+    const loadHistory = async () => {
+      try {
+        // Try member payments endpoint first
+        const res = await fetch(`/api/member_payments/${user.id}`, { credentials: 'include' });
+        if (res.ok) {
+          const ct = res.headers.get("content-type");
+          if (ct && ct.includes("application/json")) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              setHistory(data);
+              setLoading(false);
+              return;
+            }
+          }
         }
-        return res.json();
-      })
-      .then(data => {
-        setHistory(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(err => {
+        // Fallback: use savings transactions API
+        const savRes = await fetch('/api/savings', { credentials: 'include' });
+        if (savRes.ok) {
+          const savData = await savRes.json();
+          if (Array.isArray(savData)) {
+            const mapped = savData.map((t: any) => ({
+              id: t.id,
+              date: t.date || t.createdDate,
+              type: t.description || t.type || 'Simpanan',
+              amount: t.amount,
+              status: t.status || 'Success'
+            }));
+            setHistory(mapped);
+          }
+        }
+      } catch (err: any) {
         console.error('Failed to load history:', err);
         setError(err.message || 'Gagal memuat laporan');
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+    loadHistory();
   }, [user?.id]);
 
   const exportPersonalPDF = () => {

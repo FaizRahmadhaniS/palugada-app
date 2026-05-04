@@ -33,9 +33,11 @@ export default function Withdrawals({ user }: { user?: any }) {
   const [currentUser, setCurrentUser] = useState(user);
   const [adminFee, setAdminFee] = useState(5000);
 
+  const [sukarelaSaldo, setSukarelaSaldo] = useState(0);
+
   useEffect(() => {
     const safeFetch = (url: string) => 
-      fetch(url).then(res => {
+      fetch(url, { credentials: 'include' }).then(res => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
@@ -55,12 +57,26 @@ export default function Withdrawals({ user }: { user?: any }) {
     if (!user) {
       safeFetch('/api/auth/me').then(data => setCurrentUser(data.user)).catch(console.error);
     }
+
+    // Fetch sukarela savings balance
+    fetch('/api/savings', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const sukarela = data
+            .filter(s => (s.description || s.type || '').toLowerCase().includes('sukarela'))
+            .reduce((sum, s) => sum + (s.type === 'Withdrawal' ? -(s.amount || 0) : (s.amount || 0)), 0);
+          setSukarelaSaldo(Math.max(0, sukarela));
+        }
+      })
+      .catch(() => {});
+
     fetchWithdrawals();
   }, [user]);
 
   const fetchWithdrawals = async () => {
     try {
-      const res = await fetch('/api/withdrawals');
+      const res = await fetch('/api/withdrawals', { credentials: 'include' });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
@@ -86,7 +102,7 @@ export default function Withdrawals({ user }: { user?: any }) {
     
     setSubmitting(true);
     try {
-      const res = await fetch('/api/withdrawals', {
+      const res = await fetch('/api/withdrawals', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -114,7 +130,7 @@ export default function Withdrawals({ user }: { user?: any }) {
 
   const handleAction = async (id: string, status: 'success' | 'failed') => {
     try {
-      await fetch(`/api/withdrawals/${id}/status`, {
+      await fetch(`/api/withdrawals/${id}/status`, { credentials: 'include',
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -236,7 +252,7 @@ export default function Withdrawals({ user }: { user?: any }) {
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full"></div>
             <Wallet className="mb-4 opacity-80" size={32} />
             <p className="text-sm font-medium opacity-80 uppercase tracking-wider">Saldo Sukarela</p>
-            <h3 className="text-3xl font-black mt-1">Rp {(currentUser?.total_savings || 0).toLocaleString('id-ID')}</h3>
+            <h3 className="text-3xl font-black mt-1">Rp {sukarelaSaldo.toLocaleString('id-ID')}</h3>
             <p className="text-[10px] mt-4 font-bold uppercase tracking-tighter opacity-60">Dapat ditarik kapan saja</p>
           </div>
           

@@ -14,12 +14,39 @@ export default function MemberStatement({ user }: { user: any }) {
   const fetchStatement = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/members/${user.id}/statement`);
-      if (!res.ok) throw new Error('Failed to fetch statement');
-      const data = await res.json();
-      if (data.success) {
-        setStatement(data.statement);
+      // Try primary statement endpoint
+      const res = await fetch(`/api/members/${user.id}/statement`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.statement) {
+          setStatement(data.statement);
+          setLoading(false);
+          return;
+        }
       }
+      // Fallback: build statement from savings + member data
+      const [savRes, memRes] = await Promise.all([
+        fetch('/api/savings', { credentials: 'include' }),
+        fetch('/api/auth/me', { credentials: 'include' })
+      ]);
+      const savData = savRes.ok ? await savRes.json() : [];
+      const memData = memRes.ok ? await memRes.json() : {};
+      const mem = memData.user || user;
+      const transactions = Array.isArray(savData) ? savData : [];
+      const deposits = transactions.filter((t:any) => t.type !== 'Withdrawal').reduce((s:number,t:any) => s+(t.amount||0), 0);
+      const withdrawals = transactions.filter((t:any) => t.type === 'Withdrawal').reduce((s:number,t:any) => s+(t.amount||0), 0);
+      setStatement({
+        totalDeposits: deposits,
+        totalWithdrawals: withdrawals,
+        balance: deposits - withdrawals,
+        shuReceived: mem.total_shu || 0,
+        transactions: transactions.map((t:any) => ({
+          created_at: t.date || t.createdDate,
+          description: t.description || t.type,
+          amount: t.amount,
+          status: t.status || 'Success'
+        }))
+      });
     } catch (error) {
       console.error('Error fetching statement:', error);
     } finally {

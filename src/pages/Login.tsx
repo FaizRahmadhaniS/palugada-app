@@ -534,7 +534,7 @@ function Styles() {
         outline:none; transition:all 0.2s; color:#111827; display:block;
       }
       .pal-input:focus { border-color:#10b981; background:#fff; }
-      .pal-input::placeholder { color:#9ca3af; }
+      .pal-input::placeholder { color:#d1d5db; opacity: 1; }
       .pal-eye {
         position:absolute; right:13px; top:50%; transform:translateY(-50%);
         background:none; border:none; cursor:pointer; color:#9ca3af; padding:3px;

@@ -21,7 +21,7 @@ export default function Complaints({ user }: { user: any }) {
   const [replyMessage, setReplyMessage] = useState('');
 
   const safeFetch = (url: string, options?: any) => 
-    fetch(url, options).then(res => {
+    fetch(url, { credentials: 'include', ...options }).then(res => {
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
@@ -81,7 +81,7 @@ export default function Complaints({ user }: { user: any }) {
     e.preventDefault();
     if (!replyMessage.trim()) return;
     try {
-      await fetch('/api/report_responses', {
+      await fetch('/api/report_responses', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,7 +95,7 @@ export default function Complaints({ user }: { user: any }) {
         })
       });
       setReplyMessage('');
-      const res = await fetch(`/api/report_responses/${selectedReport.id}`);
+      const res = await fetch(`/api/report_responses/${selectedReport.id}`, { credentials: 'include' });
       const data = await res.json();
       setResponses(data);
     } catch (error) {
@@ -129,7 +129,7 @@ export default function Complaints({ user }: { user: any }) {
     // We need an endpoint for this, but let's assume we can patch it or add a response
     try {
       // Assuming we have a patch endpoint for reports_data status
-      await fetch(`/api/reports_data/${id}/status`, {
+      await fetch(`/api/reports_data/${id}/status`, { credentials: 'include',
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -144,7 +144,7 @@ export default function Complaints({ user }: { user: any }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await fetch('/api/reports_data', {
+      await fetch('/api/reports_data', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

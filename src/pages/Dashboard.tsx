@@ -118,8 +118,8 @@ export default function Dashboard() {
   const totalIncome = finances.filter(f => f.type === 'Income').reduce((sum, f) => sum + (f.amount || 0), 0);
   const totalExpense = finances.filter(f => f.type === 'Expense').reduce((sum, f) => sum + (f.amount || 0), 0);
   const activeLoans = loans.filter(l => l.status === 'approved').reduce((sum, l) => sum + (l.amount || 0), 0);
-  const totalSavings = savingsList.reduce((sum, s) => sum + (s.type === 'Withdrawal' ? -(s.amount || 0) : (s.amount || 0)), 0);
-  const totalSHU = members.reduce((sum, m) => sum + (m.total_shu || 0), 0);
+  const totalSavings = savingsList.reduce((sum, s) => sum + (s.type === 'Withdrawal' || s.type === 'withdrawal' ? -(s.amount || 0) : (s.amount || 0)), 0);
+  const totalSHU = members.reduce((sum, m) => sum + (m.total_shu || m.totalShu || 0), 0);
   const isAdmin = user?.role === 'admin';
   const activeMembers = members.filter(m => m.status === 'Aktif').length;
 
