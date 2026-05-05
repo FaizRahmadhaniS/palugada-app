@@ -45,7 +45,7 @@ export default function Savings({ user }: { user?: any }) {
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
   const [minDeposit, setMinDeposit] = useState(50000);
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
   useEffect(() => {
     if (!user) {
@@ -55,7 +55,7 @@ export default function Savings({ user }: { user?: any }) {
   }, [user]);
 
   useEffect(() => {
-    if (!isAdmin && currentUser) {
+    if (!isAdmin && currentUser && currentUser.role?.toLowerCase() !== 'admin') {
       const safeFetch = (url: string) => 
         fetch(url, { credentials: 'include' }).then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -565,8 +565,17 @@ export default function Savings({ user }: { user?: any }) {
             </div>
           )}
         </div>
-        
-        <div className="overflow-x-auto">
+
+        <style>{`
+          .sav-card { display: none; }
+          @media (max-width: 640px) {
+            .sav-table-wrap { display: none; }
+            .sav-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+          }
+        `}</style>
+
+        {/* DESKTOP: Table */}
+        <div className="sav-table-wrap overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
               <tr>
@@ -687,6 +696,64 @@ export default function Savings({ user }: { user?: any }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE: Cards */}
+        <div className="sav-card">
+          {loading ? (
+            <div style={{ textAlign:'center', padding: 32, color: '#9ca3af' }}>Memuat data...</div>
+          ) : isAdmin ? (
+            groupedSavings.length === 0 ? (
+              <div style={{ textAlign:'center', padding: 32, color: '#9ca3af' }}>Belum ada data simpanan</div>
+            ) : groupedSavings.map((group) => (
+              <div key={group.memberId} style={{ background:'#fff', border:'1.5px solid #f3f4f6', borderRadius:14, overflow:'hidden' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 16px', background:'#f9fafb', cursor:'pointer' }}
+                  onClick={() => toggleExpand(group.memberId)}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:36, height:36, borderRadius:'50%', background:'#d1fae5', color:'#059669', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:14, flexShrink:0 }}>
+                      {group.memberName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p style={{ fontSize:13, fontWeight:700, color:'#111827', margin:0 }}>{group.memberName}</p>
+                      <p style={{ fontSize:11, color:'#9ca3af', margin:'2px 0 0' }}>{group.transactions.length} transaksi</p>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <p style={{ fontSize:14, fontWeight:800, color:'#059669', margin:0 }}>Rp {group.totalAmount.toLocaleString('id-ID')}</p>
+                    <p style={{ fontSize:10, color:'#9ca3af', margin:'2px 0 0' }}>{expandedMember === group.memberId ? '▲ Tutup' : '▼ Detail'}</p>
+                  </div>
+                </div>
+                {expandedMember === group.memberId && (
+                  <div style={{ padding:'10px 14px', borderTop:'1px solid #f3f4f6', display:'flex', flexDirection:'column', gap:8 }}>
+                    {group.transactions.map((tx: any) => (
+                      <div key={tx.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', background:'#f9fafb', borderRadius:10 }}>
+                        <div>
+                          <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:0 }}>{tx.type || 'Simpanan'}</p>
+                          <p style={{ fontSize:11, color:'#9ca3af', margin:'2px 0 0' }}>{new Date(tx.date).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' })}</p>
+                        </div>
+                        <p style={{ fontSize:13, fontWeight:800, color:'#059669' }}>Rp {(tx.amount||0).toLocaleString('id-ID')}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            savings.length === 0 ? (
+              <div style={{ textAlign:'center', padding: 32, color: '#9ca3af' }}>Belum ada riwayat simpanan</div>
+            ) : savings.map((tx: any) => (
+              <div key={tx.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 16px', background:'#fff', border:'1.5px solid #f3f4f6', borderRadius:14 }}>
+                <div>
+                  <p style={{ fontSize:13, fontWeight:700, color:'#111827', margin:'0 0 3px' }}>{tx.type || 'Simpanan'}</p>
+                  <p style={{ fontSize:12, color:'#9ca3af' }}>{new Date(tx.date).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })}</p>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <p style={{ fontSize:14, fontWeight:800, color:'#059669', margin:0 }}>+ Rp {(tx.amount||0).toLocaleString('id-ID')}</p>
+                  <span style={{ fontSize:10, fontWeight:700, color:'#059669', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'2px 7px', display:'inline-block', marginTop:3 }}>Berhasil</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
       </>

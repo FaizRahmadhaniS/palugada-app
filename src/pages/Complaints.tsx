@@ -193,6 +193,14 @@ export default function Complaints({ user }: { user: any }) {
         )}
       </div>
 
+      <style>{`
+        .cp-card { display: none; }
+        @media (max-width: 640px) {
+          .cp-table-wrap { display: none; }
+          .cp-card { display: flex; flex-direction: column; gap: 10px; }
+        }
+      `}</style>
+
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-4 justify-between items-center">
           <div className="relative w-full sm:w-64">
@@ -208,7 +216,9 @@ export default function Complaints({ user }: { user: any }) {
             Filter
           </button>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* DESKTOP: Table */}
+        <div className="cp-table-wrap overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
               <tr>
@@ -234,11 +244,8 @@ export default function Complaints({ user }: { user: any }) {
                   <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-6 py-4 text-left">
                       <button 
-                        onClick={() => {
-                          setSelectedReport(r);
-                          setIsDetailModalOpen(true);
-                        }}
-                        className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium text-sm"
+                        onClick={() => { setSelectedReport(r); setIsDetailModalOpen(true); }}
+                        className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium text-sm"
                       >
                         Detail
                       </button>
@@ -257,6 +264,30 @@ export default function Complaints({ user }: { user: any }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE: Cards */}
+        <div className="cp-card p-4">
+          {loading ? (
+            <div style={{ textAlign:'center',padding:32,color:'#9ca3af' }}>Memuat data...</div>
+          ) : reports.length === 0 ? (
+            <div style={{ textAlign:'center',padding:32,color:'#9ca3af' }}>Belum ada laporan</div>
+          ) : reports.map((r) => (
+            <div key={r.id} style={{ background:'#f9fafb',border:'1.5px solid #f3f4f6',borderRadius:14,padding:14 }}>
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,marginBottom:8 }}>
+                <div style={{ flex:1,minWidth:0 }}>
+                  <p style={{ fontSize:14,fontWeight:700,color:'#111827',margin:'0 0 3px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{r.title}</p>
+                  <p style={{ fontSize:12,color:'#6b7280',margin:0 }}>{r.category}</p>
+                  {user.role === 'admin' && <p style={{ fontSize:11,color:'#9ca3af',margin:'3px 0 0' }}>{r.isAnonymous ? 'Anonim' : r.userName}</p>}
+                </div>
+                <div>{getStatusBadge(r.status)}</div>
+              </div>
+              <button onClick={() => { setSelectedReport(r); setIsDetailModalOpen(true); }}
+                style={{ width:'100%',padding:'10px',background:'#f0fdf4',color:'#059669',border:'1.5px solid #86efac',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                Lihat Detail
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -27,7 +27,7 @@ export default function NotificationDropdown() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('/api/notifications');
+      const res = await fetch('/api/notifications', { credentials: 'include' });
       if (res.status === 401) {
         // Session expired, just clear notifications silently
         setNotifications([]);
@@ -53,7 +53,7 @@ export default function NotificationDropdown() {
 
   const markAsRead = async (id: string) => {
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      await fetch(`/api/notifications/${id}/read`, { method: 'PATCH', credentials: 'include' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     } catch (e) {
       console.error(e);
@@ -62,7 +62,7 @@ export default function NotificationDropdown() {
 
   const markAllAsRead = async () => {
     try {
-      await fetch('/api/notifications/read-all', { method: 'PATCH' });
+      await fetch('/api/notifications/read-all', { method: 'PATCH', credentials: 'include' });
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch (e) {
       console.error(e);
@@ -89,7 +89,7 @@ export default function NotificationDropdown() {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl z-50 overflow-hidden"
+            className="absolute right-0 mt-2 w-[calc(100vw-32px)] sm:w-96 max-w-sm bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl z-50 overflow-hidden"
           >
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">

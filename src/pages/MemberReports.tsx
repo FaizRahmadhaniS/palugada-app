@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Printer, Download, Search, Wallet, HandCoins, TrendingUp } from 'lucide-react';
-import { cn } from '../types';
+import { Download, Search, Printer, FileText, Calendar, TrendingUp } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 
+const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
+const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 const generateBarcode = (text: string) => {
   const canvas = document.createElement('canvas');
   JsBarcode(canvas, text, { format: 'CODE128', displayValue: false, height: 40, width: 2, margin: 0 });
@@ -18,48 +19,30 @@ export default function MemberReports({ user }: { user: any }) {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    if (!user?.id) {
-      setError('User tidak ditemukan');
-      setLoading(false);
-      return;
-    }
-
+    if (!user?.id) { setError('User tidak ditemukan'); setLoading(false); return; }
     const loadHistory = async () => {
       try {
-        // Try member payments endpoint first
         const res = await fetch(`/api/member_payments/${user.id}`, { credentials: 'include' });
         if (res.ok) {
           const ct = res.headers.get("content-type");
           if (ct && ct.includes("application/json")) {
             const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              setHistory(data);
-              setLoading(false);
-              return;
-            }
+            if (Array.isArray(data) && data.length > 0) { setHistory(data); setLoading(false); return; }
           }
         }
-        // Fallback: use savings transactions API
         const savRes = await fetch('/api/savings', { credentials: 'include' });
         if (savRes.ok) {
           const savData = await savRes.json();
           if (Array.isArray(savData)) {
-            const mapped = savData.map((t: any) => ({
-              id: t.id,
-              date: t.date || t.createdDate,
+            setHistory(savData.map((t: any) => ({
+              id: t.id, date: t.date || t.createdDate,
               type: t.description || t.type || 'Simpanan',
-              amount: t.amount,
-              status: t.status || 'Success'
-            }));
-            setHistory(mapped);
+              amount: t.amount, status: t.status || 'Success'
+            })));
           }
         }
-      } catch (err: any) {
-        console.error('Failed to load history:', err);
-        setError(err.message || 'Gagal memuat laporan');
-      } finally {
-        setLoading(false);
-      }
+      } catch (err: any) { setError(err.message || 'Gagal memuat laporan'); }
+      finally { setLoading(false); }
     };
     loadHistory();
   }, [user?.id]);
@@ -67,225 +50,159 @@ export default function MemberReports({ user }: { user: any }) {
   const exportPersonalPDF = () => {
     const doc = new jsPDF();
     const reportId = `REP-MEM-${user.id.substring(0, 5)}-${Date.now()}`;
-    
-    doc.setFillColor(16, 185, 129);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
+    doc.setFillColor(16, 185, 129); doc.rect(0, 0, 210, 50, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(28); doc.setFont('helvetica', 'bold');
+    doc.text('PALUGADA COOP', 14, 25); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
     doc.text(`Laporan Aktivitas: ${user.name}`, 14, 32);
-    doc.text(`NIK: ${user.nik || '-'}`, 14, 37);
-
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
+    doc.addImage(generateBarcode(reportId), 'PNG', 140, 10, 55, 20);
+    doc.setFontSize(8); doc.text(`REPORT ID: ${reportId}`, 140, 35);
+    doc.setTextColor(0, 0, 0); doc.setFontSize(14);
     doc.text('RIWAYAT TRANSAKSI PRIBADI', 14, 65);
-    
-    const tableData = history.map((h, index) => [
-      index + 1,
-      new Date(h.date).toLocaleDateString('id-ID'),
-      h.type,
-      h.status,
-      `Rp ${(h.amount || 0).toLocaleString('id-ID')}`
-    ]);
-
     autoTable(doc, {
       startY: 75,
       head: [['NO', 'TANGGAL', 'JENIS', 'STATUS', 'JUMLAH']],
-      body: tableData,
-      headStyles: { fillColor: [16, 185, 129], halign: 'center' },
-      columnStyles: {
-        0: { halign: 'center' },
-        4: { halign: 'right' }
-      }
+      body: history.map((h, i) => [i+1, fmtDate(h.date), h.type, h.status, fmt(h.amount)]),
+      headStyles: { fillColor: [16, 185, 129] }
     });
-
     doc.save(`laporan-saya-${Date.now()}.pdf`);
   };
 
-  const handlePrintReceipt = (transaction: any) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const html = `
-      <html>
-        <head>
-          <title>Bukti Transaksi - ${transaction.id}</title>
-          <style>
-            body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #333; }
-            .receipt-box { border: 1px dashed #ccc; padding: 30px; max-width: 400px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 1px dashed #ccc; padding-bottom: 20px; }
-            .title { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
-            .subtitle { font-size: 14px; color: #666; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
-            .total-row { border-top: 1px dashed #ccc; padding-top: 15px; margin-top: 15px; font-weight: bold; font-size: 16px; }
-            .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #888; border-top: 1px dashed #ccc; padding-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="receipt-box">
-            <div class="header">
-              <div class="title">PALUGADA SIMPLE</div>
-              <div class="subtitle">Koperasi Simpan Pinjam</div>
-              <div style="margin-top: 10px; font-size: 12px;">ID: ${transaction.id}</div>
-            </div>
-            
-            <div class="row">
-              <span>Tanggal</span>
-              <span>${new Date(transaction.date).toLocaleString('id-ID')}</span>
-            </div>
-            <div class="row">
-              <span>Member</span>
-              <span>${user.name}</span>
-            </div>
-            <div class="row">
-              <span>Jenis Transaksi</span>
-              <span>${transaction.type}</span>
-            </div>
-            <div class="row">
-              <span>Status</span>
-              <span>${transaction.status}</span>
-            </div>
-            
-            <div class="row total-row">
-              <span>TOTAL</span>
-              <span>Rp ${transaction.amount.toLocaleString('id-ID')}</span>
-            </div>
-            
-            <div class="footer">
-              Terima kasih atas kepercayaan Anda.<br/>
-              Simpan bukti ini sebagai referensi yang sah.
-            </div>
-          </div>
-          <script>
-            window.onload = function() { window.print(); }
-          </script>
-        </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+  const handlePrint = (t: any) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<html><head><title>Bukti</title><style>body{font-family:monospace;padding:40px}
+    .box{border:1px dashed #ccc;padding:30px;max-width:400px;margin:0 auto}
+    .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+    .total{font-weight:bold;font-size:18px;padding-top:12px}
+    </style></head><body><div class="box">
+    <h2 style="text-align:center">PALUGADA COOP</h2>
+    <p style="text-align:center;color:#666">Koperasi Simpan Pinjam</p>
+    <div class="row"><span>Tanggal</span><span>${fmtDate(t.date)}</span></div>
+    <div class="row"><span>Anggota</span><span>${user.name}</span></div>
+    <div class="row"><span>Jenis</span><span>${t.type}</span></div>
+    <div class="row"><span>Status</span><span>${t.status}</span></div>
+    <div class="row total"><span>TOTAL</span><span>${fmt(t.amount)}</span></div>
+    </div><script>window.onload=()=>window.print()</script></body></html>`);
+    w.document.close();
   };
 
-  const filteredHistory = history.filter(h => 
-    h.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    h.type.toLowerCase().includes(searchTerm.toLowerCase())
+  const filtered = history.filter(h =>
+    (h.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h.type || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <div className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-emerald-600 dark:border-slate-800 dark:border-t-emerald-500 animate-spin"></div>
-        <p className="text-slate-600 dark:text-slate-400 font-medium">Memuat laporan Anda...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4 px-4">
-        <div className="text-red-600 dark:text-red-400 text-xl font-bold">Terjadi Kesalahan</div>
-        <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">{error}</p>
-        <button 
-          onClick={() => { setLoading(true); setError(null); }}
-          className="mt-4 px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
-        >
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div style={{ padding: '20px 16px', width: '100%' }}>
+      <style>{`
+        @keyframes sp { to { transform: rotate(360deg); } }
+        .mr-card { display: none; }
+        @media (max-width: 640px) {
+          .mr-table-wrap { display: none; }
+          .mr-card { display: flex; flex-direction: column; gap: 10px; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:20 }}>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Riwayat Transaksi & Laporan</h1>
-          <p className="text-slate-500 dark:text-slate-400">Riwayat transaksi dan bukti pembayaran Anda</p>
+          <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Riwayat & Laporan</h1>
+          <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Riwayat transaksi dan bukti pembayaran Anda</p>
         </div>
-        <button 
-          onClick={exportPersonalPDF}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 dark:shadow-none"
-        >
-          <Download size={18} />
-          Unduh Laporan PDF
+        <button onClick={exportPersonalPDF}
+          style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#059669',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
+          <Download size={16}/> Unduh PDF
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-4 justify-between items-center">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Cari transaksi..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 dark:text-white"
-            />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-              <tr>
-                <th className="px-6 py-4 font-medium text-center">Aksi</th>
-                <th className="px-6 py-4 font-medium">Tanggal</th>
-                <th className="px-6 py-4 font-medium">ID Transaksi</th>
-                <th className="px-6 py-4 font-medium">Jenis Transaksi</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Jumlah</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">Memuat data...</td>
-                </tr>
-              ) : filteredHistory.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">Belum ada riwayat transaksi</td>
-                </tr>
-              ) : (
-                filteredHistory.map((h) => (
-                  <tr key={h.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-6 py-4 text-center">
-                      <button 
-                        onClick={() => handlePrintReceipt(h)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
-                      >
-                        <Printer size={14} />
-                        Cetak Bukti
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                      {new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{h.id}</td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{h.type}</td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                        {h.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-900 dark:text-white">
-                      Rp {h.amount.toLocaleString('id-ID')}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Search */}
+      <div style={{ position:'relative',marginBottom:16 }}>
+        <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
+        <input type="text" placeholder="Cari transaksi..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+          style={{ width:'100%',padding:'11px 14px 11px 38px',border:'1.5px solid #e5e7eb',borderRadius:11,fontSize:14,background:'#f9fafb',outline:'none',boxSizing:'border-box' }}/>
       </div>
+
+      {loading ? (
+        <div style={{ display:'flex',justifyContent:'center',padding:48 }}>
+          <div style={{ width:28,height:28,border:'3px solid #e5e7eb',borderTop:'3px solid #059669',borderRadius:'50%',animation:'sp .8s linear infinite' }}/>
+        </div>
+      ) : error ? (
+        <div style={{ background:'#fff1f2',border:'1.5px solid #fecdd3',borderRadius:14,padding:'24px',textAlign:'center' }}>
+          <p style={{ fontSize:14,color:'#be123c',marginBottom:12 }}>{error}</p>
+          <button onClick={() => { setLoading(true); setError(null); }}
+            style={{ padding:'8px 20px',background:'#059669',color:'#fff',border:'none',borderRadius:9,fontSize:13,fontWeight:600,cursor:'pointer' }}>Coba Lagi</button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:'center',padding:'48px 20px',background:'#f9fafb',borderRadius:14,border:'1.5px dashed #e5e7eb' }}>
+          <FileText size={40} color="#d1d5db" style={{ marginBottom:10 }}/>
+          <p style={{ fontSize:14,color:'#9ca3af',fontWeight:500 }}>Belum ada riwayat transaksi</p>
+        </div>
+      ) : (
+        <>
+          {/* DESKTOP: Table */}
+          <div className="mr-table-wrap" style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',overflow:'hidden',boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%',borderCollapse:'collapse',minWidth:500 }}>
+                <thead>
+                  <tr style={{ background:'#f9fafb',borderBottom:'1.5px solid #f3f4f6' }}>
+                    {['Aksi','Tanggal','Jenis Transaksi','Status','Jumlah'].map(h => (
+                      <th key={h} style={{ padding:'12px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((h, i) => (
+                    <tr key={h.id||i} style={{ borderBottom:'1px solid #f9fafb' }}
+                      onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.background='transparent')}>
+                      <td style={{ padding:'12px 16px' }}>
+                        <button onClick={() => handlePrint(h)}
+                          style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 10px',background:'#f0fdf4',color:'#059669',border:'1px solid #86efac',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer' }}>
+                          <Printer size={12}/> Cetak
+                        </button>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:13,color:'#6b7280',whiteSpace:'nowrap' }}>
+                        <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+                          <Calendar size={12} color="#9ca3af"/>{fmtDate(h.date)}
+                        </div>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:13,fontWeight:600,color:'#111827',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</td>
+                      <td style={{ padding:'12px 16px' }}>
+                        <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:'#f0fdf4',color:'#059669',border:'1px solid #86efac' }}>{h.status}</span>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:14,fontWeight:800,color:'#059669',whiteSpace:'nowrap' }}>{fmt(h.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* MOBILE: Cards */}
+          <div className="mr-card">
+            {filtered.map((h, i) => (
+              <div key={h.id||i} style={{ background:'#fff',border:'1.5px solid #f3f4f6',borderRadius:14,padding:16,boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,gap:8 }}>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <p style={{ fontSize:14,fontWeight:700,color:'#111827',margin:'0 0 4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</p>
+                    <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+                      <Calendar size={11} color="#9ca3af"/>
+                      <span style={{ fontSize:12,color:'#6b7280' }}>{fmtDate(h.date)}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:'right',flexShrink:0 }}>
+                    <p style={{ fontSize:16,fontWeight:800,color:'#059669',margin:0 }}>{fmt(h.amount)}</p>
+                    <span style={{ fontSize:10,fontWeight:700,color:'#059669',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:6,padding:'2px 8px',display:'inline-block',marginTop:4 }}>{h.status}</span>
+                  </div>
+                </div>
+                <button onClick={() => handlePrint(h)}
+                  style={{ width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'10px',background:'#f0fdf4',color:'#059669',border:'1.5px solid #86efac',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                  <Printer size={14}/> Cetak Bukti Transaksi
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -19,11 +19,15 @@ export default function LoanPaymentHistory({ user }: { user: any }) {
     fetch('/api/loans', { credentials: 'include' })
       .then(r => r.json()).then(d => {
         const arr = Array.isArray(d) ? d : [];
-        setLoans(arr);
-        if (arr.length > 0) setSelectedLoan(arr[0].id);
+        // Filter: member hanya lihat pinjaman miliknya sendiri
+        const filtered = user?.role === 'admin'
+          ? arr
+          : arr.filter((l: any) => l.memberId === user?.id || l.member_id === user?.id);
+        setLoans(filtered);
+        if (filtered.length > 0) setSelectedLoan(filtered[0].id);
         else setLoading(false);
       }).catch(() => setLoading(false));
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!selectedLoan) return;

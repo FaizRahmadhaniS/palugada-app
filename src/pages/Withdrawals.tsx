@@ -279,7 +279,17 @@ export default function Withdrawals({ user }: { user?: any }) {
             Riwayat Penarikan
           </h3>
         </div>
-        <div className="overflow-x-auto">
+
+        <style>{`
+          .wd-card { display: none; }
+          @media (max-width: 640px) {
+            .wd-table-wrap { display: none; }
+            .wd-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+          }
+        `}</style>
+
+        {/* DESKTOP: Table */}
+        <div className="wd-table-wrap overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
               <tr>
@@ -326,16 +336,10 @@ export default function Withdrawals({ user }: { user?: any }) {
                     <td className="px-6 py-4 space-x-2">
                       {w.status === 'pending' && (
                         <>
-                          <button 
-                            onClick={() => handleAction(w.id, 'success')}
-                            className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors"
-                          >
+                          <button onClick={() => handleAction(w.id, 'success')} className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors">
                             <CheckCircle2 size={18} />
                           </button>
-                          <button 
-                            onClick={() => handleAction(w.id, 'failed')}
-                            className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
-                          >
+                          <button onClick={() => handleAction(w.id, 'failed')} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors">
                             <XCircle size={18} />
                           </button>
                         </>
@@ -348,6 +352,47 @@ export default function Withdrawals({ user }: { user?: any }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE: Cards */}
+        <div className="wd-card">
+          {loading ? (
+            <div style={{ textAlign:'center', padding:32, color:'#9ca3af' }}>Memuat data...</div>
+          ) : withdrawals.length === 0 ? (
+            <div style={{ textAlign:'center', padding:32, color:'#9ca3af' }}>Belum ada riwayat penarikan</div>
+          ) : withdrawals.map((w) => (
+            <div key={w.id} style={{ background:'#fff', border:'1.5px solid #f3f4f6', borderRadius:14, padding:14 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:10 }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  {isAdmin && <p style={{ fontSize:13, fontWeight:700, color:'#111827', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{w.memberName}</p>}
+                  <p style={{ fontSize:12, color:'#6b7280', margin:0 }}>{new Date(w.created_at).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' })}</p>
+                  {w.description && <p style={{ fontSize:12, color:'#9ca3af', margin:'3px 0 0', fontStyle:'italic' }}>{w.description}</p>}
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <p style={{ fontSize:16, fontWeight:800, color:'#111827', margin:0 }}>Rp {(w.amount||0).toLocaleString('id-ID')}</p>
+                  <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, display:'inline-block', marginTop:4,
+                    background: w.status==='pending'?'#fffbeb':w.status==='success'?'#f0fdf4':'#fff1f2',
+                    color: w.status==='pending'?'#d97706':w.status==='success'?'#059669':'#e11d48',
+                    border: `1px solid ${w.status==='pending'?'#fde68a':w.status==='success'?'#86efac':'#fecdd3'}`
+                  }}>
+                    {w.status==='pending'?'Menunggu':w.status==='success'?'Berhasil':'Ditolak'}
+                  </span>
+                </div>
+              </div>
+              {isAdmin && w.status === 'pending' && (
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={() => handleAction(w.id, 'success')}
+                    style={{ flex:1, padding:'10px', background:'#f0fdf4', color:'#059669', border:'1.5px solid #86efac', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                    <CheckCircle2 size={14}/> Setujui
+                  </button>
+                  <button onClick={() => handleAction(w.id, 'failed')}
+                    style={{ flex:1, padding:'10px', background:'#fff1f2', color:'#e11d48', border:'1.5px solid #fecdd3', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+                    <XCircle size={14}/> Tolak
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

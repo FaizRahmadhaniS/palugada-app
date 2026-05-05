@@ -90,7 +90,7 @@ export default function EmailNotifications({ user }: { user: any }) {
 
     setSendingTest(true);
     try {
-      const res = await fetch('/api/notifications/send-email', {
+      const res = await fetch('/api/notifications/send-email', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,7 +196,7 @@ export default function EmailNotifications({ user }: { user: any }) {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Test Email</h2>
         
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="email"
             placeholder="Masukkan email untuk test"
@@ -207,7 +207,7 @@ export default function EmailNotifications({ user }: { user: any }) {
           <button
             onClick={handleSendTestEmail}
             disabled={sendingTest}
-            className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all flex items-center gap-2 disabled:opacity-50"
+            className="w-full sm:w-auto px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Send size={18} />
             {sendingTest ? 'Mengirim...' : 'Kirim Test'}
@@ -231,7 +231,7 @@ export default function EmailNotifications({ user }: { user: any }) {
         <button
           onClick={handleSaveSettings}
           disabled={loading}
-          className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50"
+          className="w-full sm:w-auto px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50"
         >
           {loading ? 'Menyimpan...' : 'Simpan Pengaturan'}
         </button>
