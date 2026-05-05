@@ -141,7 +141,7 @@ export default function Withdrawals({ user }: { user?: any }) {
     }
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
   const exportWithdrawalsPDF = () => {
     const doc = new jsPDF();
