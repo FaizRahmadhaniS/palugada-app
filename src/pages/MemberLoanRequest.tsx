@@ -167,16 +167,17 @@ export default function MemberLoanRequest({ user }: { user: any }) {
                 <Calculator size={18} color="#059669" />
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>Simulasi Cicilan</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+              <style>{`.sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}@media(max-width:400px){.sim-grid{grid-template-columns:1fr}}`}</style>
+              <div className="sim-grid">
                 {[
                   { l: 'Cicilan/Bulan', v: fmt(monthlyInstallment), c: '#059669', Icon: HandCoins },
                   { l: 'Total Bunga', v: fmt(totalInterest), c: '#d97706', Icon: TrendingDown },
                   { l: 'Total Bayar', v: fmt(totalRepayment), c: '#111827', Icon: Calculator },
                 ].map(({ l, v, c, Icon }) => (
-                  <div key={l} style={{ background: '#fff', borderRadius: 10, padding: '12px 10px', textAlign: 'center', border: '1px solid #d1fae5' }}>
+                  <div key={l} style={{ background: '#fff', borderRadius: 10, padding: '12px 8px', textAlign: 'center', border: '1px solid #d1fae5' }}>
                     <Icon size={16} color={c} style={{ marginBottom: 6 }} />
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.03em', margin: '0 0 4px' }}>{l}</p>
-                    <p style={{ fontSize: 'clamp(11px,2vw,14px)', fontWeight: 800, color: c, margin: 0 }}>{v}</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.03em', margin: '0 0 4px', whiteSpace: 'nowrap' }}>{l}</p>
+                    <p style={{ fontSize: 'clamp(12px,3.5vw,15px)', fontWeight: 800, color: c, margin: 0, wordBreak: 'break-all' }}>{v}</p>
                   </div>
                 ))}
               </div>
