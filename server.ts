@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import session from "express-session";
 import { OAuth2Client } from "google-auth-library";
 // @ts-ignore
-const midtransClient = require("midtrans-client");
+import midtransClient from "midtrans-client";
 import db from "./server/db.ts";
 import fs from "fs";
 import nodemailer from "nodemailer";
