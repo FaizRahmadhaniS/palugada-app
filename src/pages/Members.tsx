@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Eye, X, Printer, CreditCard, Camera, ZoomIn, Download, FileText } from 'lucide-react';
+import { useDialog } from '../components/Dialog';
+import { Users, Search, Filter, Eye, X, Printer, CreditCard, Camera, ZoomIn, Download, FileText, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 import ImageViewer from '../components/ImageViewer';
@@ -14,6 +15,7 @@ const generateBarcode = (text: string) => {
 };
 
 export default function Members() {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -56,6 +58,21 @@ export default function Members() {
         setLoadError(true);
         setLoading(false);
       }
+    }
+  };
+
+  const handleDeleteMember = async (id: string, name: string) => {
+    if (!await dlgConfirm({ title: 'Konfirmasi Hapus', message: `Yakin ingin menghapus anggota "${name}"? Data tidak dapat dikembalikan.`, type: 'confirm', confirmText: 'Ya, Hapus', cancelText: 'Batal' })) return;
+    try {
+      const res = await fetch(`/api/members/${id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        setMembers((prev: any[]) => prev.filter((m: any) => m.id !== id));
+      } else {
+        alert('Gagal menghapus anggota: ' + (data.error || 'Error'));
+      }
+    } catch {
+      dlgAlert({ title: 'Perhatian', message: 'Terjadi kesalahan koneksi', type: 'error', confirmText: 'OK' });
     }
   };
 
@@ -326,6 +343,13 @@ export default function Members() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded transition-colors"
                         >
                           <Printer size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMember(member.id, member.name)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded transition-colors"
+                          title="Hapus anggota"
+                        >
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     </td>

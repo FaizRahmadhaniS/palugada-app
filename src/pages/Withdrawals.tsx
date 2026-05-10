@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDialog } from '../components/Dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowDownRight, 
@@ -24,6 +25,7 @@ const generateBarcode = (text: string) => {
 };
 
 export default function Withdrawals({ user }: { user?: any }) {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -118,11 +120,11 @@ export default function Withdrawals({ user }: { user?: any }) {
         setDescription('');
         fetchWithdrawals();
       } else {
-        alert(data.message || 'Gagal mengajukan penarikan');
+        dlgAlert({ message: data.message || 'Gagal mengajukan penarikan', type: 'info', confirmText: 'OK' });
       }
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan');
+      dlgAlert({ title: 'Perhatian', message: 'Terjadi kesalahan', type: 'error', confirmText: 'OK' });
     } finally {
       setSubmitting(false);
     }

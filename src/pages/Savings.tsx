@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, Search, ChevronDown, ChevronUp, Plus, ArrowUpRight, PiggyBank, History, CreditCard, Receipt, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
+import { useDialog } from '../components/Dialog';
+import { Wallet, Search, ChevronDown, ChevronUp, Plus, ArrowUpRight, PiggyBank, History, CreditCard, Receipt, AlertTriangle, CheckCircle2, FileText, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -15,6 +16,7 @@ const generateBarcode = (text: string) => {
 };
 
 export default function Savings({ user }: { user?: any }) {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [savings, setSavings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -180,7 +182,7 @@ export default function Savings({ user }: { user?: any }) {
   };
 
   const handleDeleteSaving = async (id: string) => {
-    if (!window.confirm('Yakin ingin menghapus transaksi simpanan ini?')) return;
+    if (!await dlgConfirm({ title: 'Konfirmasi Hapus', message: 'Yakin ingin menghapus transaksi simpanan ini?', type: 'confirm', confirmText: 'Ya, Hapus', cancelText: 'Batal' })) return;
     try {
       const res = await fetch(`/api/savings/${id}`, {
         method: 'DELETE', credentials: 'include'
@@ -189,10 +191,10 @@ export default function Savings({ user }: { user?: any }) {
       if (data.success) {
         setSavings(prev => prev.filter(s => s.id !== id));
       } else {
-        alert('Gagal menghapus transaksi');
+        dlgAlert({ title: 'Perhatian', message: 'Gagal menghapus transaksi', type: 'error', confirmText: 'OK' });
       }
     } catch {
-      alert('Terjadi kesalahan');
+      dlgAlert({ title: 'Perhatian', message: 'Terjadi kesalahan', type: 'error', confirmText: 'OK' });
     }
   };
 
@@ -660,6 +662,7 @@ export default function Savings({ user }: { user?: any }) {
                                     <th className="px-4 py-3 font-bold uppercase tracking-tighter">Tanggal</th>
                                     <th className="px-4 py-3 font-bold uppercase tracking-tighter">Keterangan</th>
                                     <th className="px-4 py-3 font-bold uppercase tracking-tighter text-right">Jumlah</th>
+                                    <th className="px-4 py-3 font-bold uppercase tracking-tighter text-center">Hapus</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -675,6 +678,15 @@ export default function Savings({ user }: { user?: any }) {
                                       </td>
                                       <td className="px-4 py-3 text-right font-black text-slate-900 dark:text-white">
                                         Rp {(tx.amount || 0).toLocaleString('id-ID')}
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <button
+                                          onClick={() => handleDeleteSaving(tx.id)}
+                                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors"
+                                          title="Hapus transaksi"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}

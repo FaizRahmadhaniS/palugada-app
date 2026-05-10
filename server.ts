@@ -6,7 +6,8 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import { OAuth2Client } from "google-auth-library";
-import midtransClient from "midtrans-client";
+// @ts-ignore
+const midtransClient = require("midtrans-client");
 import db from "./server/db.ts";
 import fs from "fs";
 import nodemailer from "nodemailer";
@@ -244,9 +245,9 @@ app.use('/api', (req, res, next) => {
     } catch (e) {}
     return {
       provider: 'midtrans',
-      isProduction: false,
-      serverKey: process.env.MIDTRANS_SERVER_KEY,
-      clientKey: process.env.MIDTRANS_CLIENT_KEY,
+      isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+      serverKey: process.env.MIDTRANS_SERVER_KEY || '',
+      clientKey: process.env.MIDTRANS_CLIENT_KEY || '',
       glodipaySecret: ''
     };
   }

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Settings({ user }: { user: any }) {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const { language, setLanguage } = useLanguage();
   const [theme, setTheme] = useState(() => localStorage.getItem('app_theme') || 'light');
   const [paymentConfig, setPaymentConfig] = useState<any>(null);
@@ -436,13 +437,13 @@ export default function Settings({ user }: { user: any }) {
                           const res = await fetch('/api/system/reset', { method: 'POST' });
                           const data = await res.json();
                           if (data.success) {
-                            alert(language === 'id' ? 'Sistem berhasil direset.' : 'System reset successful.');
+                            dlgAlert({ message: language === 'id' ? 'Sistem berhasil direset.' : 'System reset successful.', type: 'info', confirmText: 'OK' });
                             window.location.reload();
                           } else {
-                            alert(data.message);
+                            dlgAlert({ message: data.message, type: 'info', confirmText: 'OK' });
                           }
                         } catch (e) {
-                          alert('Error resetting system');
+                          dlgAlert({ title: 'Perhatian', message: 'Error resetting system', type: 'error', confirmText: 'OK' });
                         }
                       }
                     }}

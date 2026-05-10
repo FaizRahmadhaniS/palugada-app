@@ -4,6 +4,7 @@ import { Check, X, Clock, CreditCard, Camera, Eye, Briefcase, Phone, MapPin, Use
 import ImageViewer from '../components/ImageViewer';
 
 export default function Approvals() {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [activeTab, setActiveTab] = useState('Pendaftaran');
   const [pendingMembers, setPendingMembers] = useState<any[]>([]);
   const [pendingLoans, setPendingLoans] = useState<any[]>([]);
@@ -58,7 +59,7 @@ export default function Approvals() {
       fetchData();
     } catch (err) {
       console.error(err);
-      alert('Gagal memproses pendaftaran');
+      dlgAlert({ title: 'Perhatian', message: 'Gagal memproses pendaftaran', type: 'error', confirmText: 'OK' });
     }
   };
 
@@ -72,7 +73,7 @@ export default function Approvals() {
       fetchData();
     } catch (err) {
       console.error(err);
-      alert('Gagal memproses pinjaman');
+      dlgAlert({ title: 'Perhatian', message: 'Gagal memproses pinjaman', type: 'error', confirmText: 'OK' });
     }
   };
 

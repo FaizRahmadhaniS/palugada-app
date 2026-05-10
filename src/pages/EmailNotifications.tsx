@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDialog } from '../components/Dialog';
 import { motion } from 'motion/react';
 import { Mail, Bell, CheckCircle, AlertCircle, Settings, Send } from 'lucide-react';
 
@@ -56,6 +57,7 @@ const emailTemplates: EmailTemplate[] = [
 ];
 
 export default function EmailNotifications({ user }: { user: any }) {
+  const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [templates, setTemplates] = useState<EmailTemplate[]>(emailTemplates);
   const [loading, setLoading] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -73,10 +75,10 @@ export default function EmailNotifications({ user }: { user: any }) {
     try {
       // Placeholder for saving email settings
       console.log('Saving email templates:', templates);
-      alert('Pengaturan email berhasil disimpan!');
+      dlgAlert({ title: 'Berhasil', message: 'Pengaturan email berhasil disimpan!', type: 'success', confirmText: 'OK' });
     } catch (error) {
       console.error('Error:', error);
-      alert('Gagal menyimpan pengaturan');
+      dlgAlert({ title: 'Perhatian', message: 'Gagal menyimpan pengaturan', type: 'error', confirmText: 'OK' });
     } finally {
       setLoading(false);
     }
@@ -84,7 +86,7 @@ export default function EmailNotifications({ user }: { user: any }) {
 
   const handleSendTestEmail = async () => {
     if (!testEmail) {
-      alert('Masukkan alamat email terlebih dahulu');
+      dlgAlert({ title: 'Perhatian', message: 'Masukkan alamat email terlebih dahulu', type: 'error', confirmText: 'OK' });
       return;
     }
 
@@ -104,11 +106,11 @@ export default function EmailNotifications({ user }: { user: any }) {
       if (res.ok) {
         setTestSuccess(true);
         setTimeout(() => setTestSuccess(false), 3000);
-        alert(`Email test telah dikirim ke ${testEmail}`);
+        dlgAlert({ message: `Email test telah dikirim ke ${testEmail}`, type: 'info', confirmText: 'OK' });
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Gagal mengirim email test');
+      dlgAlert({ title: 'Perhatian', message: 'Gagal mengirim email test', type: 'error', confirmText: 'OK' });
     } finally {
       setSendingTest(false);
     }

@@ -2,6 +2,7 @@ import {
   BrowserRouter as Router, Routes, Route, Link,
   useLocation, Navigate
 } from 'react-router-dom';
+import { DialogProvider } from './components/Dialog';
 import {
   LayoutDashboard, Users, Wallet, HandCoins, FileText,
   Settings as SettingsIcon, Menu, X, LogOut, CreditCard,
@@ -451,6 +452,7 @@ export default function App() {
   );
 
   return (
+    <DialogProvider>
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {!user ? (
         /* Public routes */
@@ -478,5 +480,6 @@ export default function App() {
         </LanguageProvider>
       )}
     </ThemeContext.Provider>
+    </DialogProvider>
   );
 }
