@@ -1,3 +1,4 @@
+import { useDialog } from '../components/Dialog';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, Clock, CreditCard, Camera, Eye, Briefcase, Phone, MapPin, User, ZoomIn } from 'lucide-react';

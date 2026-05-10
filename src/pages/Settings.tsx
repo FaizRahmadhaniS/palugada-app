@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDialog } from '../components/Dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import { Globe, Moon, Sun, Building2, Percent, ShieldCheck, Wallet, Save, History, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -432,7 +433,7 @@ export default function Settings({ user }: { user: any }) {
                   </div>
                   <button 
                     onClick={async () => {
-                      if (confirm(language === 'id' ? 'APAKAH ANDA YAKIN? Semua data akan dihapus permanen!' : 'ARE YOU SURE? All data will be permanently deleted!')) {
+                      if (await dlgConfirm({ title: 'Reset Sistem', message: language === 'id' ? 'APAKAH ANDA YAKIN? Semua data akan dihapus permanen!' : 'ARE YOU SURE? All data will be permanently deleted!', type: 'confirm', confirmText: 'Ya, Reset', cancelText: 'Batal' })) {
                         try {
                           const res = await fetch('/api/system/reset', { method: 'POST' });
                           const data = await res.json();
@@ -475,7 +476,7 @@ export default function Settings({ user }: { user: any }) {
             </Link>
           )}
           <button 
-            onClick={() => alert(language === 'id' ? 'Aplikasi Anda sudah menggunakan versi terbaru (v1.2.0-stable).' : 'Your app is up to date (v1.2.0-stable).')}
+            onClick={async () => { await dlgAlert({ title: 'Info Versi', message: language === 'id' ? 'Aplikasi Anda sudah menggunakan versi terbaru (v1.2.0-stable).' : 'Your app is up to date (v1.2.0-stable).', type: 'success', confirmText: 'OK' }); }}
             className="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-semibold transition-all"
           >
             {language === 'id' ? 'Periksa Pembaruan' : 'Check for Updates'}
