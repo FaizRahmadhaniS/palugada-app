@@ -1330,6 +1330,14 @@ app.use('/api', (req, res, next) => {
     res.json({ success: true });
   });
 
+  // Delete single savings transaction
+  app.delete("/api/savings/:id", async (req, res) => {
+    const { id } = req.params;
+    const { error } = await db.from('transactions').delete().eq('id', id).eq('category', 'Savings');
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true });
+  });
+
   app.delete("/api/savings/all", async (req, res) => {
     // Delete all records from savings table
     const { error } = await db.from('savings').delete().neq('id', '0');

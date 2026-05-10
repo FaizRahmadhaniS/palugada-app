@@ -179,6 +179,23 @@ export default function Savings({ user }: { user?: any }) {
     }
   };
 
+  const handleDeleteSaving = async (id: string) => {
+    if (!window.confirm('Yakin ingin menghapus transaksi simpanan ini?')) return;
+    try {
+      const res = await fetch(`/api/savings/${id}`, {
+        method: 'DELETE', credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSavings(prev => prev.filter(s => s.id !== id));
+      } else {
+        alert('Gagal menghapus transaksi');
+      }
+    } catch {
+      alert('Terjadi kesalahan');
+    }
+  };
+
   const fetchSavings = async () => {
     try {
       const res = await fetch('/api/savings', { credentials: 'include' });
@@ -589,6 +606,7 @@ export default function Savings({ user }: { user?: any }) {
                   {isAdmin ? 'Total Saldo' : 'Jumlah'}
                 </th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-right">Status</th>
+                {!isAdmin && <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-center">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -671,7 +689,7 @@ export default function Savings({ user }: { user?: any }) {
                 ))
               ) : (
                 savings.length === 0 ? (
-                  <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500">Belum ada riwayat simpanan</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Belum ada riwayat simpanan</td></tr>
                 ) : savings.map((tx) => (
                   <tr key={tx.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
@@ -690,6 +708,15 @@ export default function Savings({ user }: { user?: any }) {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-widest">Berhasil</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button
+                        onClick={() => handleDeleteSaving(tx.id)}
+                        className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors"
+                        title="Hapus transaksi"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))
