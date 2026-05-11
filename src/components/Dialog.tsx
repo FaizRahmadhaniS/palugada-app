@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { AlertTriangle, CheckCircle, XCircle, Info, X } from 'lucide-react';
+import { HelpCircle, CheckCircle, XCircle, Info, X } from 'lucide-react';
 
 type DialogType = 'confirm' | 'success' | 'error' | 'info';
 
@@ -29,14 +29,14 @@ const DialogContext = createContext<DialogContextType>({
 export const useDialog = () => useContext(DialogContext);
 
 const icons: Record<DialogType, React.ReactNode> = {
-  confirm: <AlertTriangle size={24} color="#d97706" />,
+  confirm: <HelpCircle size={24} color="#3b82f6" />,
   success: <CheckCircle size={24} color="#059669" />,
   error: <XCircle size={24} color="#e11d48" />,
   info: <Info size={24} color="#3b82f6" />,
 };
 
 const colors: Record<DialogType, { bg: string; border: string; btn: string; light: string }> = {
-  confirm: { bg: '#fffbeb', border: '#fde68a', btn: '#d97706', light: '#fef3c7' },
+  confirm: { bg: '#eff6ff', border: '#bfdbfe', btn: '#e11d48', light: '#dbeafe' },
   success: { bg: '#f0fdf4', border: '#86efac', btn: '#059669', light: '#dcfce7' },
   error:   { bg: '#fff1f2', border: '#fecdd3', btn: '#e11d48', light: '#ffe4e6' },
   info:    { bg: '#eff6ff', border: '#bfdbfe', btn: '#3b82f6', light: '#dbeafe' },

@@ -71,9 +71,11 @@ export default function Profile({ user, onUpdate }: { user: any, onUpdate: (user
       });
       const data = await res.json();
       if (data.success) {
-        setMessage('Profil berhasil diperbarui');
+        const msg = password ? 'Profil & password berhasil diperbarui! ✓' : 'Profil berhasil diperbarui! ✓';
+        setMessage(msg);
         onUpdate(data.user);
         setPassword('');
+        setTimeout(() => setMessage(''), 4000);
       } else {
         setError(data.message || 'Gagal memperbarui profil');
       }
