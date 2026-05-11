@@ -33,7 +33,7 @@ export default function Members() {
     try {
       // Timeout 25 detik untuk handle Railway cold start
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const res = await fetch('/api/members', { credentials: 'include', signal: controller.signal });
       clearTimeout(timeoutId);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -51,7 +51,7 @@ export default function Members() {
     } catch (error) {
       console.error('Error fetching members (attempt ' + (retryCount + 1) + '):', error);
       // Auto-retry max 2 kali untuk handle cold start
-      if (retryCount < 2) {
+      if (retryCount < 1) {
         setTimeout(() => fetchMembers(retryCount + 1), 2000);
       } else {
         setMembers([]);

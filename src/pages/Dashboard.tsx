@@ -76,7 +76,7 @@ export default function Dashboard() {
     // Fetch dengan timeout 25 detik (toleransi cold start Railway)
     const safeFetch = (url: string) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 55000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       return fetch(url, { credentials: 'include', signal: controller.signal })
         .then(res => {
           clearTimeout(timeoutId);
@@ -92,21 +92,25 @@ export default function Dashboard() {
     };
 
     try {
-      const [financeData, membersData, loansData, savingsData] = await Promise.all([
+      // Use allSettled to show partial data progressively
+      const results = await Promise.allSettled([
         safeFetch('/api/finance'),
         safeFetch('/api/members'),
         safeFetch('/api/loans'),
         safeFetch('/api/savings')
       ]);
-      setFinances(Array.isArray(financeData) ? financeData : []);
-      setMembers(Array.isArray(membersData) ? membersData : []);
-      setLoans(Array.isArray(loansData) ? loansData : []);
-      setSavingsList(Array.isArray(savingsData) ? savingsData : []);
+      const [fr, mr, lr, sr] = results;
+      setFinances(fr.status === 'fulfilled' && Array.isArray(fr.value) ? fr.value : []);
+      setMembers(mr.status === 'fulfilled' && Array.isArray(mr.value) ? mr.value : []);
+      setLoans(lr.status === 'fulfilled' && Array.isArray(lr.value) ? lr.value : []);
+      setSavingsList(sr.status === 'fulfilled' && Array.isArray(sr.value) ? sr.value : []);
       setLoading(false);
+      // Only error if ALL failed
+      if (results.every(r => r.status === 'rejected')) throw new Error('All failed');
     } catch (err) {
       console.error('Fetch error (attempt ' + (retryCount + 1) + '):', err);
       // Auto-retry max 2 kali untuk handle Railway cold start
-      if (retryCount < 2) {
+      if (retryCount < 1) {
         setTimeout(() => fetchData(retryCount + 1), 2000);
       } else {
         setLoadError(true);

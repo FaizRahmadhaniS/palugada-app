@@ -855,7 +855,10 @@ app.use('/api', (req, res, next) => {
 
   // --- Data API ---
   app.get("/api/members", async (req, res) => {
-    const { data: members } = await db.from('members').select('*');
+    // Select only needed columns (skip large ktp_url/selfie_url for list view)
+    const { data: members } = await db.from('members')
+      .select('id,name,email,phone,address,nik,type,status,join_date,company_code,system_status,is_deleted,created_by,created_date,last_updated_by,last_updated_date,job_title,salary_range,emergency_contact_name,emergency_contact_phone,total_savings,total_shu')
+      .order('created_date', { ascending: false });
     const mapped = (members || []).map(m => ({
       id: m.id,
       name: m.name,
@@ -873,8 +876,6 @@ app.use('/api', (req, res, next) => {
       createdDate: m.created_date,
       lastUpdatedBy: m.last_updated_by,
       lastUpdatedDate: m.last_updated_date,
-      ktp_url: m.ktp_url,
-      selfie_url: m.selfie_url,
       job_title: m.job_title,
       salary_range: m.salary_range,
       emergency_contact_name: m.emergency_contact_name,
