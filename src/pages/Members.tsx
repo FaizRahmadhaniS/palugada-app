@@ -340,7 +340,20 @@ export default function Members() {
                     <td className="px-3 sm:px-4 py-3">
                       <div className="flex gap-1">
                         <button 
-                          onClick={() => setSelectedMember(member)}
+                          onClick={async () => {
+                            // Fetch full member details including photos
+                            try {
+                              const res = await fetch(`/api/members/${member.id}`, { credentials: 'include' });
+                              if (res.ok) {
+                                const fullData = await res.json();
+                                setSelectedMember(fullData);
+                              } else {
+                                setSelectedMember(member);
+                              }
+                            } catch {
+                              setSelectedMember(member);
+                            }
+                          }}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 rounded transition-colors"
                         >
                           <Eye size={12} />

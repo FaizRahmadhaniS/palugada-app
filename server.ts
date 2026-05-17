@@ -1832,6 +1832,47 @@ app.use('/api', (req, res, next) => {
   });
 
   // Add member statement endpoint
+  // --- Single Member Detail (with photos) ---
+  app.get("/api/members/:id", async (req, res) => {
+    const { id } = req.params;
+    const { data: member, error } = await db.from('members')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error || !member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    
+    // Return full data including ktp_url and selfie_url
+    res.json({
+      id: member.id,
+      name: member.name,
+      email: member.email,
+      phone: member.phone,
+      address: member.address,
+      nik: member.nik,
+      type: member.type,
+      status: member.status,
+      joinDate: member.join_date,
+      companyCode: member.company_code,
+      systemStatus: member.system_status,
+      isDeleted: member.is_deleted,
+      createdBy: member.created_by,
+      createdDate: member.created_date,
+      lastUpdatedBy: member.last_updated_by,
+      lastUpdatedDate: member.last_updated_date,
+      job_title: member.job_title,
+      salary_range: member.salary_range,
+      emergency_contact_name: member.emergency_contact_name,
+      emergency_contact_phone: member.emergency_contact_phone,
+      total_savings: member.total_savings || 0,
+      total_shu: member.total_shu || 0,
+      ktp_url: member.ktp_url,
+      selfie_url: member.selfie_url
+    });
+  });
+
   app.get("/api/members/:id/statement", async (req, res) => {
     const { id } = req.params;
     const user = (req.session as any).user;
