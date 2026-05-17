@@ -1,7 +1,7 @@
 {
   "provider": "midtrans",
   "isProduction": false,
-  "serverKey": "Mid-server-Ve7zgGd35hxhepZMvGQRe10_",
+  "serverKey": "",
   "clientKey": "Mid-client-lEHlV0_GCaPMx8TC",
   "glodipaySecret": ""
 }
