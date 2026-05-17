@@ -229,40 +229,111 @@ export default function MemberDashboard({ user }: { user: any }) {
         )}
       </AnimatePresence>
 
-      {/* Member Profile Header */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={cn(isDark ? "bg-[#161a23] border border-white/[0.06]" : "bg-slate-900", "rounded-2xl p-6 text-white")}>
-        <div className="flex items-center gap-4">
-          {/* Avatar */}
-          <div className="flex-shrink-0 w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
-            {user.name?.charAt(0).toUpperCase()}
-          </div>
-          
-          {/* Member Info */}
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-bold tracking-tight">{user.name}</h2>
-              {user.nik ? (
-                <span className="flex items-center gap-1 px-2 py-1 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-xs font-medium text-emerald-300">
-                  <CheckCircle size={14} />
-                  Terverifikasi
+      {/* Member Profile Header - Clean & Compact */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }} 
+        animate={{ opacity: 1, y: 0 }}
+        className={cn(
+          "relative overflow-hidden rounded-2xl",
+          isDark 
+            ? "bg-[#161a23] border border-white/[0.08]" 
+            : "bg-white border border-slate-200/80"
+        )}
+        style={{ boxShadow: isDark ? '0 1px 3px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03)' }}
+      >
+        {/* Subtle accent line on top */}
+        <div className="absolute top-0 left-0 right-0 h-[3px]"
+          style={{ background: 'linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%)' }} />
+
+        <div className="p-4 sm:p-5">
+          <div className="flex items-center gap-4">
+            {/* Compact Avatar */}
+            <div className="relative flex-shrink-0">
+              <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
+                  boxShadow: '0 2px 8px rgba(16,185,129,0.25)'
+                }}>
+                {user.name?.charAt(0).toUpperCase()}
+              </div>
+              {/* Small verified dot */}
+              {user.nik && (
+                <div className={cn(
+                  "absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-[2.5px]",
+                  isDark ? "border-[#161a23]" : "border-white"
+                )} style={{ background: '#10b981' }}>
+                  <CheckCircle size={10} className="text-white" strokeWidth={3} />
+                </div>
+              )}
+            </div>
+
+            {/* Info — single row layout */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <h2 className={cn("text-lg font-bold tracking-tight truncate", isDark ? "text-white" : "text-slate-900")}>
+                  {user.name}
+                </h2>
+                {user.nik ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold"
+                    style={{ 
+                      background: isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5',
+                      color: isDark ? '#6ee7b7' : '#059669',
+                      border: isDark ? '1px solid rgba(16,185,129,0.2)' : '1px solid #a7f3d0'
+                    }}>
+                    <Shield size={10} strokeWidth={2.5} />
+                    Verified
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold"
+                    style={{ 
+                      background: isDark ? 'rgba(251,191,36,0.15)' : '#fef3c7',
+                      color: isDark ? '#fcd34d' : '#b45309',
+                      border: isDark ? '1px solid rgba(251,191,36,0.2)' : '1px solid #fde68a'
+                    }}>
+                    <Clock size={10} strokeWidth={2.5} />
+                    Pending
+                  </span>
+                )}
+              </div>
+              
+              {/* Inline details */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={cn("inline-flex items-center gap-1.5 text-xs", isDark ? "text-slate-400" : "text-slate-500")}>
+                  <CreditCard size={11} />
+                  <span className="font-mono font-semibold">{user.id ? user.id.slice(0, 8).toUpperCase() : 'N/A'}</span>
                 </span>
+                {user.phone && (
+                  <span className={cn("inline-flex items-center gap-1.5 text-xs", isDark ? "text-slate-400" : "text-slate-500")}>
+                    <Phone size={11} />
+                    <span className="font-medium">{user.phone}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Status indicator on right */}
+            <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
+              {user.status === 'active' ? (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                  style={{ background: isDark ? 'rgba(16,185,129,0.1)' : '#ecfdf5' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" style={{ boxShadow: '0 0 6px #10b981' }} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: isDark ? '#6ee7b7' : '#059669' }}>Aktif</span>
+                </div>
               ) : (
-                <span className="flex items-center gap-1 px-2 py-1 bg-amber-500/20 border border-amber-400/30 rounded-full text-xs font-medium text-amber-300">
-                  <Clock size={14} />
-                  Menunggu Verifikasi
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                  style={{ background: isDark ? 'rgba(148,163,184,0.1)' : '#f1f5f9' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: isDark ? '#94a3b8' : '#64748b' }}>Pending</span>
+                </div>
+              )}
+              {user.join_date && (
+                <span className={cn("text-[10px]", isDark ? "text-slate-500" : "text-slate-400")}>
+                  Member sejak {new Date(user.join_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
                 </span>
               )}
             </div>
-            <p className="text-sm text-slate-300">Member ID: {user.id ? user.id.slice(0, 8).toUpperCase() : 'N/A'}</p>
-            {user.phone && <p className="text-xs text-slate-400 mt-1">📞 {user.phone}</p>}
-          </div>
-
-          {/* Member Status Badge */}
-          <div className="text-right">
-            <div className="text-3xl font-bold tracking-tight">{user.status === 'active' ? '✓' : '○'}</div>
-            <p className="text-xs text-slate-300 mt-1">
-              {user.status === 'active' ? 'Status Aktif' : 'Menunggu Aktivasi'}
-            </p>
           </div>
         </div>
       </motion.div>

@@ -390,6 +390,11 @@ app.use('/api', (req, res, next) => {
   app.post("/api/payment/create", async (req, res) => {
     const config = getPaymentConfig();
     const { amount, orderId, customerDetails, provider = config.provider } = req.body;
+    // FIXED: Prefer server host over browser origin (origin bisa salah kalau ada proxy/iframe)
+    // Priority: APP_URL env > req host (server actual URL) > origin (browser-sent)
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+    const host = req.headers.host;
+    const appUrl = process.env.APP_URL || (host ? `${proto}://${host}` : req.headers.origin) || 'http://localhost:3000';
     
     if (provider === 'glodipay') {
       // --- GLODIPAY INTEGRATION SKELETON ---
@@ -423,7 +428,7 @@ app.use('/api', (req, res, next) => {
         },
         customer_details: customerDetails,
         callbacks: {
-          finish: `${process.env.APP_URL || 'http://localhost:3000'}/member/history`
+          finish: `${appUrl}/member/history`
         }
       };
 
@@ -891,7 +896,8 @@ app.use('/api', (req, res, next) => {
     const user = (req.session as any).user;
     console.log(`[Savings API] User role: ${user?.role}, userId: ${user?.id}`);
     
-    let query = db.from('transactions').select('*').eq('category', 'Savings');
+    // Only count actual savings deposits (exclude withdrawal type)
+    let query = db.from('transactions').select('*').eq('category', 'Savings').neq('type', 'Withdrawal');
     
     if (user && user.role !== 'admin') {
       query = query.eq('member_id', user.id);
@@ -910,17 +916,22 @@ app.use('/api', (req, res, next) => {
       return acc;
     }, {});
 
-    const mapped = (transactions || []).map(t => ({
-      id: t.id,
-      memberId: t.member_id,
-      memberName: memberMap[t.member_id] || 'Unknown',
-      amount: t.amount,
-      type: t.type,
-      description: t.description,
-      status: t.status,
-      date: t.created_at,
-      createdDate: t.created_at
-    }));
+    const mapped = (transactions || []).map(t => {
+      // Extract savings sub-type (Wajib/Sukarela/Pokok) from description
+      const subTypeMatch = (t.description || '').match(/Simpanan (Wajib|Sukarela|Pokok)/i);
+      const displayType = subTypeMatch ? subTypeMatch[1] : (t.type === 'Withdrawal' ? 'Penarikan' : 'Sukarela');
+      return {
+        id: t.id,
+        memberId: t.member_id,
+        memberName: memberMap[t.member_id] || 'Unknown',
+        amount: t.amount,
+        type: displayType,
+        description: t.description,
+        status: t.status,
+        date: t.created_at,
+        createdDate: t.created_at
+      };
+    });
     
     console.log(`[Savings API] Returning ${mapped.length} items`);
     res.json(mapped);
@@ -1308,28 +1319,31 @@ app.use('/api', (req, res, next) => {
   });
 
   app.post("/api/savings", async (req, res) => {
-    const { id, memberId, memberName, amount, type, date, companyCode, createdBy } = req.body;
-    const now = new Date().toISOString();
-    const { error } = await db.from('savings').insert({ 
-      id, 
-      member_id: memberId, 
-      member_name: memberName, 
-      amount, 
-      type, 
-      date,
-      company_code: companyCode || 'PALUGADA',
-      status: 1,
-      is_deleted: 0,
-      created_by: createdBy || 'system',
-      created_date: now,
-      last_updated_by: createdBy || 'system',
-      last_updated_date: now
-    });
+    const { memberId, amount, type } = req.body;
+    const user = (req.session as any).user;
+    const finalMemberId = memberId || user?.id;
+    const savingsType = type || 'Sukarela'; // Wajib / Sukarela / Pokok
+    
+    // FIXED: Use correct schema:
+    // - id is auto-generated UUID (don't send manual id)
+    // - type must be 'Deposit' (not 'Sukarela' - that's the savings sub-type)
+    // - Savings sub-type goes in description
+    const { data, error } = await db.from('transactions').insert({ 
+      member_id: finalMemberId,
+      type: 'Deposit',
+      category: 'Savings',
+      amount: Number(amount) || 0,
+      status: 'success',
+      description: `Setoran Simpanan ${savingsType}`
+    }).select();
+    
     if (error) {
-      console.error("Error inserting saving:", error);
+      console.error("[Savings POST] Error:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
-    res.json({ success: true });
+    
+    console.log(`[Savings POST] ✓ Inserted: member=${finalMemberId}, amount=${amount}, type=${savingsType}`);
+    res.json({ success: true, data });
   });
 
   // Delete single savings transaction

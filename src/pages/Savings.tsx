@@ -157,16 +157,20 @@ export default function Savings({ user }: { user?: any }) {
             }
           }
         } else {
-          await fetch('/api/finance', { credentials: 'include',
+          // FIXED: Save to /api/savings (transactions table) instead of /api/finance
+          // so data appears in member & admin savings views
+          await fetch('/api/savings', { credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              type: 'Income',
-              category: 'Savings',
-              amount: parseInt(amount),
-              description: `Simpanan ${depositType} - ${currentUser.name}`,
+              id: `SAV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
               memberId: currentUser.id,
-              savingsType: depositType
+              memberName: currentUser.name,
+              amount: parseInt(amount),
+              type: depositType,
+              date: new Date().toISOString().split('T')[0],
+              companyCode: 'PALUGADA',
+              createdBy: currentUser.id
             })
           });
         }

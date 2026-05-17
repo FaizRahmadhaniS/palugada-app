@@ -38,8 +38,8 @@ export default function Onboarding({ user, onLogout, onUpdateUser }: OnboardingP
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'ktp' | 'selfie') => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setError('Ukuran file maksimal 2MB');
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Ukuran file maksimal 5MB');
         return;
       }
       setFiles(prev => ({ ...prev, [type]: file }));
@@ -353,7 +353,7 @@ export default function Onboarding({ user, onLogout, onUpdateUser }: OnboardingP
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-400 italic text-center">
-                    Pastikan foto terlihat jelas, tidak blur, dan pencahayaan cukup. Maksimal 2MB per file.
+                    Pastikan foto terlihat jelas, tidak blur, dan pencahayaan cukup. Maksimal 5MB per file.
                   </p>
                 </div>
 
