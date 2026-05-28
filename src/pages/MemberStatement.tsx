@@ -1,30 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Download, FileText, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
+
+const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
+const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return d || '-'; } };
 
 export default function MemberStatement({ user }: { user: any }) {
   const [statement, setStatement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('all');
 
-  useEffect(() => {
-    fetchStatement();
-  }, [user]);
+  useEffect(() => { fetchStatement(); }, [user]);
 
   const fetchStatement = async () => {
     setLoading(true);
     try {
-      // Try primary statement endpoint
       const res = await fetch(`/api/members/${user.id}/statement`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.statement) {
-          setStatement(data.statement);
-          setLoading(false);
-          return;
-        }
+        if (data.success && data.statement) { setStatement(data.statement); setLoading(false); return; }
       }
-      // Fallback: build statement from savings + member data
       const [savRes, memRes] = await Promise.all([
         fetch('/api/savings', { credentials: 'include' }),
         fetch('/api/auth/me', { credentials: 'include' })
@@ -54,130 +52,102 @@ export default function MemberStatement({ user }: { user: any }) {
     }
   };
 
-  const downloadPDF = () => {
+  const downloadPDF = async () => {
     if (!statement) return;
+    const doc = new jsPDF();
+    const color: [number, number, number] = [16, 185, 129];
+
+    const startY = await addPDFHeader(doc, {
+      reportId: `STMT-${Date.now()}`,
+      title: 'Laporan Rekening Anggota',
+      subtitle: `Periode: Semua Transaksi`,
+      printedBy: user.name,
+      accentColor: color
+    });
+
+    // Info anggota
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('INFORMASI ANGGOTA', 14, startY + 4);
     
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Laporan Rekening - ${user.name}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', sans-serif; color: #1f2937; line-height: 1.6; }
-          .container { max-width: 800px; margin: 20px auto; padding: 40px; background: white; }
-          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #059669; padding-bottom: 20px; }
-          .header h1 { color: #059669; font-size: 28px; margin-bottom: 5px; }
-          .header p { color: #666; font-size: 14px; }
-          .section { margin-bottom: 30px; }
-          .section-title { font-size: 16px; font-weight: bold; color: #059669; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
-          .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-          .label { font-weight: 500; color: #4b5563; }
-          .value { text-align: right; color: #1f2937; }
-          .table { width: 100%; margin-top: 15px; border-collapse: collapse; }
-          .table th { background: #f3f4f6; padding: 10px; text-align: left; font-weight: 600; border: 1px solid #e5e7eb; }
-          .table td { padding: 10px; border: 1px solid #e5e7eb; }
-          .total-row { background: #f9fafb; font-weight: bold; }
-          .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #999; font-size: 12px; }
-          .amount { color: #059669; font-weight: bold; }
-          @page { size: A4; margin: 10mm; }
-          @media print { body { margin: 0; padding: 0; } }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>📄 LAPORAN REKENING</h1>
-            <p>Koperasi Palugada Simple - ${new Date().toLocaleDateString('id-ID')}</p>
-          </div>
-          
-          <div class="section">
-            <div class="section-title">Informasi Anggota</div>
-            <div class="row">
-              <span class="label">Nama Anggota:</span>
-              <span class="value">${user.name}</span>
-            </div>
-            <div class="row">
-              <span class="label">ID Anggota:</span>
-              <span class="value">${user.id}</span>
-            </div>
-            <div class="row">
-              <span class="label">Email:</span>
-              <span class="value">${user.email}</span>
-            </div>
-            <div class="row">
-              <span class="label">No. HP:</span>
-              <span class="value">${user.phone || '-'}</span>
-            </div>
-          </div>
 
-          <div class="section">
-            <div class="section-title">Ringkasan Keuangan</div>
-            <div class="row">
-              <span class="label">Total Setoran Simpanan:</span>
-              <span class="value amount">Rp ${(statement.totalDeposits || 0).toLocaleString('id-ID')}</span>
-            </div>
-            <div class="row">
-              <span class="label">Total Penarikan:</span>
-              <span class="value amount">Rp ${(statement.totalWithdrawals || 0).toLocaleString('id-ID')}</span>
-            </div>
-            <div class="row">
-              <span class="label">Saldo Simpanan:</span>
-              <span class="value amount">Rp ${(statement.balance || 0).toLocaleString('id-ID')}</span>
-            </div>
-            <div class="row">
-              <span class="label">SHU Diterima:</span>
-              <span class="value amount">Rp ${(statement.shuReceived || 0).toLocaleString('id-ID')}</span>
-            </div>
-          </div>
+    autoTable(doc, {
+      startY: startY + 8,
+      body: [
+        ['Nama Anggota', user.name || '-'],
+        ['ID Anggota', user.id || '-'],
+        ['Email', user.email || '-'],
+        ['No. HP', user.phone || '-'],
+      ],
+      theme: 'plain',
+      styles: { fontSize: 8.5, cellPadding: 2, textColor: [15, 23, 42] as [number,number,number] },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 45, textColor: [15, 23, 42] as [number,number,number] },
+        1: { textColor: [15, 23, 42] as [number,number,number] }
+      },
+      margin: { left: 14, right: 14 },
+    });
 
-          <div class="section">
-            <div class="section-title">Riwayat 10 Transaksi Terakhir</div>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Tanggal</th>
-                  <th>Keterangan</th>
-                  <th style="text-align: right;">Jumlah</th>
-                  <th style="text-align: center;">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${(statement.transactions || []).slice(0, 10).map((t: any) => `
-                  <tr>
-                    <td>${new Date(t.created_at || t.date).toLocaleDateString('id-ID')}</td>
-                    <td>${t.description || t.type}</td>
-                    <td style="text-align: right; color: #059669; font-weight: bold;">Rp ${(t.amount || 0).toLocaleString('id-ID')}</td>
-                    <td style="text-align: center;">
-                      ${t.status === 'success' || t.status === 'Success' ? '<span style="color: green;">✓</span>' : 
-                        t.status === 'pending' || t.status === 'Pending' ? '<span style="color: orange;">⏱</span>' : 
-                        '<span style="color: red;">✗</span>'}
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
+    const afterInfo = (doc as any).lastAutoTable.finalY + 6;
 
-          <div class="footer">
-            <p>Laporan ini digenerated secara otomatis oleh Sistem Informasi Koperasi Palugada Simple</p>
-            <p style="margin-top: 10px;">Dicetak: ${new Date().toLocaleString('id-ID')}</p>
-          </div>
-        </div>
-        <script>window.print();</script>
-      </body>
-      </html>
-    `;
+    // Ringkasan keuangan
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('RINGKASAN KEUANGAN', 14, afterInfo);
 
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `statement_${user.name}_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    autoTable(doc, {
+      startY: afterInfo + 4,
+      head: [['KETERANGAN', 'JUMLAH']],
+      body: [
+        ['Total Setoran Simpanan', fmt(statement.totalDeposits || 0)],
+        ['Total Penarikan', fmt(statement.totalWithdrawals || 0)],
+        ['Saldo Simpanan', fmt(statement.balance || 0)],
+        ['SHU Diterima', fmt(statement.shuReceived || 0)],
+      ],
+      headStyles: { fillColor: color, textColor: [255,255,255] as [number,number,number], fontSize: 8, fontStyle: 'bold', cellPadding: 2.5 },
+      bodyStyles: { fontSize: 8.5, cellPadding: 2.5, textColor: [15, 23, 42] as [number,number,number] },
+      columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', fontStyle: 'bold', textColor: [5, 150, 105] as [number,number,number] } },
+      tableLineColor: [226, 232, 240] as [number,number,number], tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 },
+    });
+
+    const afterSummary = (doc as any).lastAutoTable.finalY + 6;
+
+    // Riwayat transaksi
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('RIWAYAT TRANSAKSI', 14, afterSummary);
+
+    const txs = (statement.transactions || []).map((t: any, i: number) => [
+      i + 1,
+      fmtDate(t.created_at || t.date),
+      (t.description || t.type || '-').replace(/\[PAY-\d+\]/g, '').trim(),
+      fmt(t.amount),
+      t.status === 'success' || t.status === 'Success' ? 'Berhasil' :
+      t.status === 'pending' || t.status === 'Pending' ? 'Pending' : 'Gagal'
+    ]);
+
+    autoTable(doc, {
+      startY: afterSummary + 4,
+      head: [['NO', 'TANGGAL', 'KETERANGAN', 'JUMLAH', 'STATUS']],
+      body: txs,
+      headStyles: { fillColor: color, textColor: [255,255,255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        1: { halign: 'center', cellWidth: 26 },
+        3: { halign: 'right', fontStyle: 'bold', cellWidth: 35, textColor: [5, 150, 105] as [number,number,number] },
+        4: { halign: 'center', cellWidth: 24 }
+      },
+      tableLineColor: [226, 232, 240] as [number,number,number], tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 },
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc, color);
+    doc.save(`laporan-rekening-${user.name}-${Date.now()}.pdf`);
   };
 
   if (loading) {

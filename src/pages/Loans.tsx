@@ -2,17 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle, XCircle, FileText, X, Calendar, CreditCard, Clock, TrendingDown, ChevronRight, AlertCircle, History, ListChecks } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import JsBarcode from 'jsbarcode';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-';
-
-const generateBarcode = (text: string) => {
-  const canvas = document.createElement('canvas');
-  JsBarcode(canvas, text, { format: 'CODE128', displayValue: false, height: 40, width: 2, margin: 0 });
-  return canvas.toDataURL('image/png');
-};
 
 export default function Loans() {
   const [loans, setLoans] = useState<any[]>([]);
@@ -67,17 +61,45 @@ export default function Loans() {
     } catch {}
   };
 
-  const exportLoansPDF = () => {
+  const exportLoansPDF = async () => {
     const doc = new jsPDF();
-    doc.setFontSize(18); doc.text('Laporan Data Pinjaman', 14, 20);
-    doc.setFontSize(11); doc.text(`Dicetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 28);
-    autoTable(doc, {
-      startY: 35,
-      head: [['No', 'Anggota', 'Jumlah', 'Tenor', 'Sisa', 'Status']],
-      body: loans.map((l, i) => [i+1, l.memberName||'N/A', fmt(l.amount), `${l.duration||0} bln`, fmt(l.remainingBalance), l.status]),
-      styles: { fontSize: 9 }, headStyles: { fillColor: [5,150,105] }
+    const color: [number, number, number] = [245, 158, 11];
+    const startY = await addPDFHeader(doc, {
+      reportId: `LOAN-${Date.now()}`,
+      title: 'Laporan Data Pinjaman',
+      subtitle: `Total: ${loans.length} pinjaman · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      accentColor: color
     });
-    doc.save('data-pinjaman.pdf');
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'ANGGOTA', 'JUMLAH', 'TENOR', 'SISA', 'STATUS', 'TANGGAL']],
+      body: loans.map((l, i) => [
+        i + 1,
+        l.memberName || 'N/A',
+        fmt(l.amount),
+        `${l.duration || 0} bln`,
+        fmt(l.remainingBalance),
+        l.status === 'approved' ? 'Aktif' : l.status === 'paid_off' ? 'Lunas' : l.status === 'pending' ? 'Menunggu' : 'Ditolak',
+        fmtDate(l.date)
+      ]),
+      headStyles: { fillColor: color, textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [254, 252, 232] as [number,number,number] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        2: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'center', cellWidth: 20 },
+        6: { halign: 'center', cellWidth: 28 }
+      },
+      tableLineColor: [226, 232, 240] as [number,number,number],
+      tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc, color);
+    doc.save(`laporan-pinjaman-${Date.now()}.pdf`);
   };
 
   const filtered = loans.filter(l =>

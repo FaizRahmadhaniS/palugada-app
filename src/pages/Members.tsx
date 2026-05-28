@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 import ImageViewer from '../components/ImageViewer';
 import jsPDF from 'jspdf';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 
@@ -159,73 +160,26 @@ export default function Members() {
     printWindow.document.close();
   };
 
-  const exportMembersPDF = () => {
+  const exportMembersPDF = async () => {
     const doc = new jsPDF();
     const reportId = `MEM-${Date.now()}`;
-    
-    // Header
-    doc.setFillColor(16, 185, 129);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
-
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.text(`GENERATED: ${new Date().toLocaleString('id-ID')}`, 140, 40);
-
-    // Title
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('DAFTAR ANGGOTA KOPERASI', 14, 65);
-    
-    const tableData = members.map((m, index) => [
-      index + 1,
-      m.name,
-      m.email,
-      m.phone || '-',
-      m.nik || '-',
-      m.type,
-      m.status,
-      m.joinDate || new Date().toLocaleDateString('id-ID')
-    ]);
-
+    const startY = await addPDFHeader(doc, {
+      reportId,
+      title: 'Daftar Anggota Koperasi',
+      subtitle: `Total: ${members.length} anggota · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    });
+    const tableData = members.map((m, i) => [i + 1, m.name, m.email, m.phone || '-', m.nik || '-', m.type, m.status, m.joinDate || new Date().toLocaleDateString('id-ID')]);
     autoTable(doc, {
-      startY: 75,
+      startY,
       head: [['NO', 'NAMA', 'EMAIL', 'PHONE', 'NIK', 'TIPE', 'STATUS', 'TGL BERGABUNG']],
       body: tableData,
-      headStyles: { 
-        fillColor: [16, 185, 129],
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      bodyStyles: { fontSize: 7 },
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 4 },
+      bodyStyles: { fontSize: 7.5, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
       alternateRowStyles: { fillColor: [240, 253, 244] },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 8 }
-      }
+      columnStyles: { 0: { halign: 'center', cellWidth: 12 } },
+      tableLineColor: [226, 232, 240], tableLineWidth: 0.3,
     });
-
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Halaman ${i} dari ${pageCount} - Total anggota: ${members.length}`, 105, 285, { align: 'center' });
-    }
-
+    addPDFFooter(doc);
     doc.save(`daftar-anggota-${Date.now()}.pdf`);
   };
 

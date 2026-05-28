@@ -78,7 +78,7 @@ function AppRoutes({ user, setUser }: { user: any; setUser: (u: any) => void }) 
             <Route path="/withdrawals"      element={<W c={<Withdrawals />} />} />
             <Route path="/loans"            element={<W c={<Loans />} />} />
             <Route path="/loan-payments"    element={<W c={<LoanPaymentHistory user={user} />} />} />
-            <Route path="/approvals"        element={<W c={<Approvals />} />} />
+            <Route path="/payment-gateway"  element={<W c={<PaymentGateway />} />} />
             <Route path="/finance"          element={<W c={<Finance />} />} />
             <Route path="/complaints"       element={<W c={<Complaints user={user} />} />} />
             <Route path="/reports"          element={<W c={<Reports />} />} />
@@ -88,6 +88,7 @@ function AppRoutes({ user, setUser }: { user: any; setUser: (u: any) => void }) 
             <Route path="/email-settings"   element={<W c={<EmailNotifications user={user} />} />} />
             <Route path="/settings"         element={<W c={<Settings user={user} />} />} />
             <Route path="/audit-logs"       element={<W c={<AuditLogs />} />} />
+            <Route path="/approvals"        element={<W c={<Approvals />} />} />
           </>
         ) : (
           <>
@@ -129,6 +130,7 @@ function Sidebar({ user, onLogout, isOpen, onClose }: { user:any; onLogout:()=>v
     { name:t('nav.withdrawals'),  href:'/withdrawals',     icon:ArrowDownLeft,        group:'MENU' },
     { name:t('nav.loans'),        href:'/loans',           icon:HandCoins,            group:'MENU' },
     { name:'Riwayat Pembayaran',  href:'/loan-payments',   icon:Clock,                group:'MENU' },
+    { name:'Payment Gateway',     href:'/payment-gateway', icon:CreditCard,           group:'MENU' },
     { name:t('nav.approvals'),    href:'/approvals',       icon:CheckSquare,          group:'MENU' },
     { name:t('nav.finance'),      href:'/finance',         icon:Receipt,              group:'LAPORAN' },
     { name:'Distribusi SHU',      href:'/shu-distribution',icon:PieChart,             group:'LAPORAN' },
@@ -282,6 +284,7 @@ function Header({ user, onMenuClick }: { user:any; onMenuClick:()=>void }) {
     '/withdrawals':      { title:'Penarikan',           sub:'Riwayat dan permintaan penarikan' },
     '/loans':            { title:'Pinjaman',            sub:'Manajemen pinjaman anggota' },
     '/loan-payments':    { title:'Riwayat Pembayaran',  sub:'Histori cicilan pinjaman' },
+    '/payment-gateway':  { title:'Payment Gateway',     sub:'Monitor status pembayaran anggota' },
     '/approvals':        { title:'Persetujuan',         sub:'Kelola permintaan masuk' },
     '/finance':          { title:'Keuangan',            sub:'Laporan keuangan koperasi' },
     '/shu-distribution': { title:'Distribusi SHU',      sub:'Sisa Hasil Usaha anggota' },

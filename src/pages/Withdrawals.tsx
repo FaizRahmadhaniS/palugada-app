@@ -16,7 +16,7 @@ import {
 import { cn } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import JsBarcode from 'jsbarcode';
+import { addPDFHeader, addPDFFooter, addSignatureArea, fmt as fmtPdf } from '../utils/pdfHelper';
 
 const generateBarcode = (text: string) => {
   const canvas = document.createElement('canvas');
@@ -34,6 +34,9 @@ export default function Withdrawals({ user }: { user?: any }) {
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(user);
   const [adminFee, setAdminFee] = useState(5000);
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
 
   const [sukarelaSaldo, setSukarelaSaldo] = useState(0);
 
@@ -110,7 +113,10 @@ export default function Withdrawals({ user }: { user?: any }) {
         body: JSON.stringify({ 
           amount: parseFloat(amount),
           description,
-          memberId: currentUser?.id
+          memberId: currentUser?.id,
+          bankName,
+          accountNumber,
+          accountHolder
         })
       });
       const data = await res.json();
@@ -118,6 +124,9 @@ export default function Withdrawals({ user }: { user?: any }) {
         setShowModal(false);
         setAmount('');
         setDescription('');
+        setBankName('');
+        setAccountNumber('');
+        setAccountHolder('');
         fetchWithdrawals();
       } else {
         dlgAlert({ message: data.message || 'Gagal mengajukan penarikan', type: 'info', confirmText: 'OK' });
@@ -145,73 +154,50 @@ export default function Withdrawals({ user }: { user?: any }) {
 
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
-  const exportWithdrawalsPDF = () => {
+  const exportWithdrawalsPDF = async () => {
     const doc = new jsPDF();
-    const reportId = `WITHDRAW-${Date.now()}`;
-    
-    // Header
-    doc.setFillColor(16, 185, 129);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
+    const reportId = `WD-${Date.now()}`;
+    const color: [number, number, number] = [16, 185, 129];
 
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.text(`GENERATED: ${new Date().toLocaleString('id-ID')}`, 140, 40);
-
-    // Title
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('LAPORAN PENARIKAN DANA', 14, 65);
-    
-    const tableData = withdrawals.map((w, index) => [
-      index + 1,
-      w.memberName || 'Admin',
-      new Date(w.created_at).toLocaleDateString('id-ID'),
-      `Rp ${(w.amount || 0).toLocaleString('id-ID')}`,
-      w.description || '-',
-      w.status === 'pending' ? 'Menunggu' : w.status === 'success' ? 'Berhasil' : 'Ditolak'
-    ]);
-
-    autoTable(doc, {
-      startY: 75,
-      head: [['NO', 'ANGGOTA', 'TANGGAL', 'JUMLAH', 'KETERANGAN', 'STATUS']],
-      body: tableData,
-      headStyles: { 
-        fillColor: [16, 185, 129],
-        textColor: [255, 255, 255],
-        fontSize: 9,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      bodyStyles: { fontSize: 8 },
-      alternateRowStyles: { fillColor: [240, 253, 244] },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        3: { halign: 'right' },
-        5: { halign: 'center' }
-      }
+    const startY = await addPDFHeader(doc, {
+      reportId,
+      title: 'Laporan Penarikan Dana',
+      subtitle: `Periode: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })} | Total: ${withdrawals.length} transaksi`,
+      accentColor: color
     });
 
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Halaman ${i} dari ${pageCount} - Dokumen ini sah dikeluarkan oleh sistem Palugada.`, 105, 285, { align: 'center' });
-    }
+    const statusMap: Record<string, string> = { pending: 'Menunggu', success: 'Berhasil', failed: 'Ditolak' };
+    const totalAmt = withdrawals.filter(w => w.status === 'success').reduce((s, w) => s + (w.amount || 0), 0);
 
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'ANGGOTA', 'TANGGAL', 'JUMLAH', 'KETERANGAN / REKENING', 'STATUS']],
+      body: withdrawals.map((w, i) => [
+        i + 1,
+        w.memberName || '-',
+        new Date(w.created_at).toLocaleDateString('id-ID'),
+        fmtPdf(w.amount),
+        w.description || '-',
+        statusMap[w.status] || w.status
+      ]),
+      foot: [['', '', 'TOTAL DICAIRKAN', fmtPdf(totalAmt), '', '']],
+      headStyles: { fillColor: color, textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      footStyles: { fillColor: [15, 23, 42] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        3: { halign: 'right', fontStyle: 'bold' },
+        5: { halign: 'center', cellWidth: 22 }
+      },
+      tableLineColor: [226, 232, 240] as [number,number,number],
+      tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc, color);
     doc.save(`laporan-penarikan-${Date.now()}.pdf`);
   };
 
@@ -406,7 +392,8 @@ export default function Withdrawals({ user }: { user?: any }) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-y-auto max-h-[90vh]"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
             >
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">Ajukan Penarikan</h2>
@@ -419,7 +406,7 @@ export default function Withdrawals({ user }: { user?: any }) {
                   <AlertCircle className="text-amber-600 flex-shrink-0" size={20} />
                   <div className="space-y-1">
                     <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                      Penarikan hanya bisa dilakukan dari saldo **Simpanan Sukarela**.
+                      Penarikan hanya bisa dilakukan dari saldo <strong>Simpanan Sukarela</strong>.
                     </p>
                     <p className="text-[10px] text-amber-600 dark:text-amber-500 font-bold uppercase">
                       Biaya Admin: Rp {adminFee.toLocaleString('id-ID')}
@@ -440,12 +427,51 @@ export default function Withdrawals({ user }: { user?: any }) {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Bank Tujuan <span className="text-red-400">*</span></label>
+                  <select
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all text-sm"
+                    required
+                  >
+                    <option value="">-- Pilih Bank --</option>
+                    {['BCA','BRI','BNI','Mandiri','BSI','CIMB Niaga','Danamon','BTN','Permata','BRImo','Jenius','GoPay','OVO','Dana','ShopeePay'].map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Nomor Rekening <span className="text-red-400">*</span></label>
+                  <input 
+                    type="text" 
+                    value={accountNumber}
+                    onChange={(e) => setAccountNumber(e.target.value)}
+                    placeholder="Contoh: 1234567890"
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Atas Nama <span className="text-red-400">*</span></label>
+                  <input 
+                    type="text" 
+                    value={accountHolder}
+                    onChange={(e) => setAccountHolder(e.target.value)}
+                    placeholder="Nama sesuai rekening"
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase ml-1">Keterangan (Opsional)</label>
                   <textarea 
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Contoh: Untuk keperluan mendesak"
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all text-sm min-h-[100px]"
+                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-emerald-500 rounded-2xl outline-none transition-all text-sm min-h-[80px]"
                   />
                 </div>
 

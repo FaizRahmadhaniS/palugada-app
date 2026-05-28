@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { FileText, Download, Wallet, HandCoins, TrendingUp } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 import { Saving, Loan } from '../types';
@@ -38,201 +39,83 @@ export default function Reports() {
     });
   }, []);
 
-  const exportSavingsPDF = () => {
+  const exportSavingsPDF = async () => {
     const doc = new jsPDF();
     const reportId = `REP-SAV-${Date.now()}`;
-    
-    // Header Color (Emerald)
-    doc.setFillColor(16, 185, 129);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
-
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.text(`GENERATED: ${new Date().toLocaleString('id-ID')}`, 140, 40);
-
-    // Reset text color
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('LAPORAN SIMPANAN ANGGOTA', 14, 65);
-    
-    const tableData = savings.map((s, index) => [
-      index + 1,
-      s.memberName,
-      s.type || 'Simpanan',
-      `Rp ${(s.amount || 0).toLocaleString('id-ID')}`,
-      new Date(s.date).toLocaleDateString('id-ID')
-    ]);
-
-    autoTable(doc, {
-      startY: 75,
-      head: [['NO', 'ANGGOTA', 'JENIS', 'JUMLAH', 'TANGGAL']],
-      body: tableData,
-      headStyles: { 
-        fillColor: [16, 185, 129],
-        textColor: [255, 255, 255],
-        fontSize: 10,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      bodyStyles: { fontSize: 9 },
-      alternateRowStyles: { fillColor: [240, 253, 244] },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        3: { halign: 'right' },
-        4: { halign: 'center' }
-      }
+    const startY = await addPDFHeader(doc, {
+      reportId, title: 'Laporan Simpanan Anggota',
+      subtitle: `Total: ${savings.length} transaksi · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
     });
-
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Halaman ${i} dari ${pageCount} - Dokumen ini sah dikeluarkan oleh sistem Palugada.`, 105, 285, { align: 'center' });
-    }
-
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'ANGGOTA', 'JENIS', 'JUMLAH', 'TANGGAL']],
+      body: savings.map((s, i) => [i + 1, s.memberName, s.type || 'Simpanan', `Rp ${(s.amount || 0).toLocaleString('id-ID')}`, new Date(s.date).toLocaleDateString('id-ID')]),
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 3: { halign: 'right' }, 4: { halign: 'center' } },
+      tableLineColor: [226, 232, 240], tableLineWidth: 0.3,
+    });
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 10);
+    addPDFFooter(doc);
     doc.save(`laporan-simpanan-${Date.now()}.pdf`);
   };
 
-  const exportLoansPDF = () => {
+  const exportLoansPDF = async () => {
     const doc = new jsPDF();
     const reportId = `REP-LOAN-${Date.now()}`;
-
-    // Header Color (Amber)
-    doc.setFillColor(245, 158, 11);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
-
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.text(`GENERATED: ${new Date().toLocaleString('id-ID')}`, 140, 40);
-
-    // Reset text color
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('LAPORAN PINJAMAN ANGGOTA', 14, 65);
-    
-    const tableData = loans.map((l, index) => [
-      index + 1,
-      l.memberName,
-      `Rp ${(l.amount || 0).toLocaleString('id-ID')}`,
-      `${l.duration || 0} bln`,
-      l.status === 'approved' ? 'Disetujui' : l.status === 'paid_off' ? 'Lunas' : l.status === 'pending' ? 'Menunggu' : 'Ditolak',
-      new Date(l.date).toLocaleDateString('id-ID')
-    ]);
-
-    autoTable(doc, {
-      startY: 75,
-      head: [['NO', 'ANGGOTA', 'JUMLAH', 'TENOR', 'STATUS', 'TANGGAL']],
-      body: tableData,
-      headStyles: { fillColor: [245, 158, 11], halign: 'center' },
-      bodyStyles: { fontSize: 9 },
-      alternateRowStyles: { fillColor: [254, 252, 232] },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        2: { halign: 'right' },
-        3: { halign: 'center' },
-        4: { halign: 'center' },
-        5: { halign: 'center' }
-      }
+    const startY = await addPDFHeader(doc, {
+      reportId, title: 'Laporan Pinjaman Anggota',
+      subtitle: `Total: ${loans.length} pinjaman · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      accentColor: [245, 158, 11]
     });
-
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'ANGGOTA', 'JUMLAH', 'TENOR', 'STATUS', 'TANGGAL']],
+      body: loans.map((l, i) => [i + 1, l.memberName, `Rp ${(l.amount || 0).toLocaleString('id-ID')}`, `${l.duration || 0} bln`,
+        l.status === 'approved' ? 'Disetujui' : l.status === 'paid_off' ? 'Lunas' : l.status === 'pending' ? 'Menunggu' : 'Ditolak',
+        new Date(l.date).toLocaleDateString('id-ID')]),
+      headStyles: { fillColor: [245, 158, 11], textColor: [255, 255, 255], fontSize: 9, fontStyle: 'bold', halign: 'center', cellPadding: 5 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [254, 252, 232] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 2: { halign: 'right' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' } },
+      tableLineColor: [226, 232, 240], tableLineWidth: 0.3,
+    });
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 10);
+    addPDFFooter(doc, [245, 158, 11]);
     doc.save(`laporan-pinjaman-${Date.now()}.pdf`);
   };
 
-  const exportSHUPDF = () => {
+  const exportSHUPDF = async () => {
     const doc = new jsPDF();
     const reportId = `REP-SHU-${Date.now()}`;
-
-    // Header Color (Purple)
-    doc.setFillColor(147, 51, 234);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
-
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-
-    // Reset text color
-    doc.setTextColor(0, 0, 0);
-    
-    // Mock SHU calculation based on savings and loans
     const totalSavings = savings.reduce((acc, curr) => acc + (curr.amount || 0), 0);
     const totalLoans = loans.filter(l => l.status === 'approved' || l.status === 'paid_off').reduce((acc, curr) => acc + (curr.amount || 0), 0);
-    const estimatedSHU = (totalLoans * 0.1) + (totalSavings * 0.05); // Mock logic
-
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RINGKASAN SISA HASIL USAHA (SHU)', 14, 65);
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total Simpanan Keseluruhan:`, 14, 75);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Rp ${(totalSavings || 0).toLocaleString('id-ID')}`, 100, 75);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total Pinjaman Aktif:`, 14, 82);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Rp ${(totalLoans || 0).toLocaleString('id-ID')}`, 100, 82);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Estimasi SHU Tahun Ini:`, 14, 89);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(147, 51, 234);
-    doc.text(`Rp ${(estimatedSHU || 0).toLocaleString('id-ID')}`, 100, 89);
-
-    doc.setTextColor(0, 0, 0);
+    const estimatedSHU = (totalLoans * 0.1) + (totalSavings * 0.05);
+    const startY = await addPDFHeader(doc, {
+      reportId, title: 'Ringkasan Sisa Hasil Usaha (SHU)',
+      subtitle: `Estimasi SHU: Rp ${estimatedSHU.toLocaleString('id-ID')} · ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      accentColor: [147, 51, 234]
+    });
     autoTable(doc, {
-      startY: 100,
+      startY,
       head: [['KOMPONEN PENDAPATAN', 'PERSENTASE', 'JUMLAH']],
       body: [
-        ['Pendapatan Bunga Pinjaman', '10%', `Rp ${((totalLoans * 0.1) || 0).toLocaleString('id-ID')}`],
-        ['Pendapatan Investasi Simpanan', '5%', `Rp ${((totalSavings * 0.05) || 0).toLocaleString('id-ID')}`],
-        ['Total SHU Kotor', '-', `Rp ${(estimatedSHU || 0).toLocaleString('id-ID')}`],
+        ['Pendapatan Bunga Pinjaman', '10%', `Rp ${(totalLoans * 0.1).toLocaleString('id-ID')}`],
+        ['Pendapatan Investasi Simpanan', '5%', `Rp ${(totalSavings * 0.05).toLocaleString('id-ID')}`],
+        ['Total SHU Kotor', '-', `Rp ${estimatedSHU.toLocaleString('id-ID')}`],
       ],
-      headStyles: { fillColor: [147, 51, 234], halign: 'center' },
-      columnStyles: {
-        1: { halign: 'center' },
-        2: { halign: 'right' }
-      },
+      headStyles: { fillColor: [147, 51, 234], textColor: [255, 255, 255], fontSize: 9, fontStyle: 'bold', halign: 'center', cellPadding: 5 },
+      bodyStyles: { fontSize: 9, cellPadding: 2.5, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
       alternateRowStyles: { fillColor: [250, 245, 255] },
+      tableLineColor: [226, 232, 240], tableLineWidth: 0.3,
     });
-
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 10);
+    addPDFFooter(doc, [147, 51, 234]);
     doc.save(`laporan-shu-${Date.now()}.pdf`);
   };
 

@@ -1,177 +1,275 @@
-import { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, BarChart3, Download, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { Download, Search, Printer, FileText, Calendar } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { addPDFHeader, addPDFFooter, fmt } from '../utils/pdfHelper';
 
-const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
-const fmtShort = (v: number) => v >= 1000000 ? `${(v/1000000).toFixed(1)}jt` : v >= 1000 ? `${(v/1000).toFixed(0)}rb` : String(v);
-const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 
-export default function MonthlyReports({ user }: { user: any }) {
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [report, setReport] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+export default function MemberReports({ user }: { user: any }) {
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchReport = async () => {
-    setLoading(true); setError('');
-    try {
-      const res = await fetch(`/api/reports/monthly?month=${month}&year=${year}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Gagal mengambil data');
-      setReport(await res.json());
-    } catch { setError('Gagal memuat laporan. Coba lagi.'); setReport(null); }
-    finally { setLoading(false); }
+  useEffect(() => {
+    if (!user?.id) { setError('User tidak ditemukan'); setLoading(false); return; }
+    const loadHistory = async () => {
+      try {
+        const res = await fetch(`/api/member_payments/${user.id}`, { credentials: 'include' });
+        if (res.ok) {
+          const ct = res.headers.get("content-type");
+          if (ct && ct.includes("application/json")) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) { setHistory(data); setLoading(false); return; }
+          }
+        }
+        const savRes = await fetch('/api/savings', { credentials: 'include' });
+        if (savRes.ok) {
+          const savData = await savRes.json();
+          if (Array.isArray(savData)) {
+            setHistory(savData.map((t: any) => ({
+              id: t.id, date: t.date || t.createdDate,
+              type: t.description || t.type || 'Simpanan',
+              amount: t.amount, status: t.status || 'Success'
+            })));
+          }
+        }
+      } catch (err: any) { setError(err.message || 'Gagal memuat laporan'); }
+      finally { setLoading(false); }
+    };
+    loadHistory();
+  }, [user?.id]);
+
+  const exportPersonalPDF = async () => {
+    const doc = new jsPDF();
+    const color: [number, number, number] = [16, 185, 129];
+    const startY = await addPDFHeader(doc, {
+      reportId: `MEM-${user.id.substring(0, 6)}-${Date.now()}`,
+      title: 'Riwayat Transaksi Pribadi',
+      subtitle: `Anggota: ${user.name} | ${user.email}`,
+      accentColor: color,
+      printedBy: user.name
+    });
+
+    const totalIncome = history.filter(h => !['Withdrawal','Penarikan'].includes(h.type)).reduce((s, h) => s + (h.amount || 0), 0);
+    const totalOut = history.filter(h => ['Withdrawal','Penarikan'].includes(h.type)).reduce((s, h) => s + (h.amount || 0), 0);
+
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'TANGGAL', 'JENIS TRANSAKSI', 'STATUS', 'JUMLAH (Rp)']],
+      body: history.map((h, i) => [i + 1, fmtDate(h.date), h.type || 'Simpanan', h.status || 'success', fmt(h.amount)]),
+      foot: [
+        ['', '', 'TOTAL MASUK', '', fmt(totalIncome)],
+        ['', '', 'TOTAL KELUAR', '', fmt(totalOut)],
+      ],
+      headStyles: { fillColor: color, textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      footStyles: { fillColor: [15, 23, 42] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        1: { halign: 'center', cellWidth: 28 },
+        3: { halign: 'center', cellWidth: 24 },
+        4: { halign: 'right', fontStyle: 'bold', cellWidth: 35 }
+      },
+      tableLineColor: [226, 232, 240] as [number,number,number],
+      tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+
+    addPDFFooter(doc, color);
+    doc.save(`laporan-saya-${Date.now()}.pdf`);
   };
 
-  useEffect(() => { fetchReport(); }, [month, year]);
+  const handlePrint = (t: any) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Bukti Transaksi</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; display: flex; justify-content: center; padding: 30px 16px; }
+      .page { background: #fff; width: 380px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.1); }
+      .header-stripe { background: #0f172a; padding: 8px 16px; text-align: center; }
+      .header-stripe p { color: rgba(255,255,255,.7); font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+      .header-main { background: linear-gradient(135deg, #10b981, #059669); padding: 20px 20px 16px; display: flex; align-items: center; gap: 14px; }
+      .logo-box { background: #fff; border-radius: 8px; padding: 8px 10px; text-align: center; flex-shrink: 0; }
+      .logo-box .univ { font-size: 6px; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: .03em; }
+      .logo-box .upb { font-size: 16px; font-weight: 900; color: #0f172a; line-height: 1; }
+      .logo-box .pelita { font-size: 5.5px; color: #64748b; font-weight: 700; text-transform: uppercase; }
+      .app-info h1 { color: #fff; font-size: 20px; font-weight: 900; letter-spacing: -.02em; }
+      .app-info p { color: rgba(255,255,255,.75); font-size: 10px; margin-top: 2px; }
+      .title-bar { background: #0f172a; padding: 10px 20px; text-align: center; }
+      .title-bar h2 { color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+      .body { padding: 20px; }
+      .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; align-items: flex-start; gap: 12px; }
+      .row:last-child { border-bottom: none; }
+      .row .label { font-size: 11px; color: #64748b; font-weight: 500; }
+      .row .value { font-size: 12px; color: #0f172a; font-weight: 700; text-align: right; max-width: 200px; word-break: break-all; }
+      .total-row { background: #f0fdf4; border-radius: 8px; padding: 14px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+      .total-row .label { font-size: 12px; color: #059669; font-weight: 700; text-transform: uppercase; }
+      .total-row .value { font-size: 20px; color: #059669; font-weight: 900; }
+      .status-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: #f0fdf4; color: #059669; border: 1px solid #86efac; text-transform: uppercase; }
+      .footer { background: #0f172a; padding: 12px 20px; text-align: center; }
+      .footer p { color: rgba(255,255,255,.5); font-size: 8.5px; line-height: 1.6; }
+      .footer .brand { color: #10b981; font-weight: 700; }
+      @media print { body { padding: 0; background: #fff; } .page { box-shadow: none; } }
+    </style></head>
+    <body><div class="page">
+      <div class="header-stripe">
+        <p>Universitas Pelita Bangsa — Kelompok 7 Pemrograman Web 2</p>
+      </div>
+      <div class="header-main">
+        <div class="logo-box">
+          <div class="univ">Univ.</div>
+          <div class="upb">UPB</div>
+          <div class="pelita">Pelita Bangsa</div>
+        </div>
+        <div class="app-info">
+          <h1>PALUGADA</h1>
+          <p>Sistem Manajemen Koperasi Digital</p>
+        </div>
+      </div>
+      <div class="title-bar"><h2>Bukti Transaksi</h2></div>
+      <div class="body">
+        <div class="row"><span class="label">No. Transaksi</span><span class="value">${t.id ? t.id.substring(0, 12).toUpperCase() : 'TXN-' + Date.now()}</span></div>
+        <div class="row"><span class="label">Tanggal</span><span class="value">${fmtDate(t.date)}</span></div>
+        <div class="row"><span class="label">Nama Anggota</span><span class="value">${user.name}</span></div>
+        <div class="row"><span class="label">Jenis Transaksi</span><span class="value">${t.type || 'Simpanan'}</span></div>
+        <div class="row"><span class="label">Status</span><span class="value"><span class="status-badge">${t.status || 'success'}</span></span></div>
+        <div class="total-row">
+          <span class="label">Total</span>
+          <span class="value">${fmt(t.amount)}</span>
+        </div>
+      </div>
+      <div class="footer">
+        <p>Dokumen ini diterbitkan secara resmi oleh<br/>
+        <span class="brand">Sistem PALUGADA</span> — Koperasi Digital Universitas Pelita Bangsa<br/>
+        Dicetak: ${new Date().toLocaleString('id-ID')}</p>
+      </div>
+    </div>
+    <script>window.onload=()=>{ setTimeout(()=>window.print(), 400); }</script>
+    </body></html>`);
+    w.document.close();
+  };
 
-  const net = (report?.totalSavings || 0) - (report?.totalLoans || 0);
-  const chartData = report ? [{ name: MONTHS_SHORT[month-1], Tabungan: report.totalSavings||0, Pinjaman: report.totalLoans||0 }] : [];
+  const filtered = history.filter(h =>
+    (h.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h.type || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div style={{ padding: '24px', width: '100%' }}>
+    <div style={{ padding: '20px 16px', width: '100%' }}>
       <style>{`
         @keyframes sp { to { transform: rotate(360deg); } }
-        .mr-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
-        .mr-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
-        .mr-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        @media (max-width: 1024px) {
-          .mr-layout { grid-template-columns: 1fr; }
-          .mr-stats { grid-template-columns: repeat(3,1fr); }
-        }
+        .mr-card { display: none; }
         @media (max-width: 640px) {
-          .mr-stats { grid-template-columns: 1fr; }
-          .mr-summary { grid-template-columns: 1fr; }
+          .mr-table-wrap { display: none; }
+          .mr-card { display: flex; flex-direction: column; gap: 10px; }
         }
       `}</style>
 
       {/* Header */}
-      <div style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)',borderRadius:16,padding:'24px 28px',marginBottom:24,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:20 }}>
         <div>
-          <h1 style={{ fontSize:'clamp(20px,3vw,28px)',fontWeight:800,color:'#fff',margin:0,marginBottom:4 }}>Laporan Bulanan</h1>
-          <p style={{ fontSize:14,color:'rgba(255,255,255,.8)',margin:0 }}>Analisis transaksi dan performa keuangan koperasi</p>
+          <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Riwayat & Laporan</h1>
+          <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Riwayat transaksi dan bukti pembayaran Anda</p>
         </div>
-        <span style={{ background:'rgba(255,255,255,.15)',borderRadius:10,padding:'8px 16px',color:'#fff',fontSize:14,fontWeight:700 }}>
-          {MONTHS[month-1]} {year}
-        </span>
+        <button onClick={exportPersonalPDF}
+          style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#059669',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
+          <Download size={16}/> Unduh PDF
+        </button>
       </div>
 
-      <div className="mr-layout">
-        {/* Sidebar: Period selector */}
-        <div style={{ display:'flex',flexDirection:'column',gap:16 }}>
-          <div style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',padding:20,boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
-            <h2 style={{ fontSize:14,fontWeight:700,color:'#374151',margin:'0 0 16px' }}>Pilih Periode</h2>
-            <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-              <div>
-                <label style={{ fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:7 }}>Bulan</label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))}
-                  style={{ width:'100%',padding:'10px 12px',border:'1.5px solid #e5e7eb',borderRadius:9,fontSize:14,background:'#f9fafb',outline:'none',cursor:'pointer' }}>
-                  {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:7 }}>Tahun</label>
-                <select value={year} onChange={e => setYear(Number(e.target.value))}
-                  style={{ width:'100%',padding:'10px 12px',border:'1.5px solid #e5e7eb',borderRadius:9,fontSize:14,background:'#f9fafb',outline:'none',cursor:'pointer' }}>
-                  {[2023,2024,2025,2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-              <button onClick={fetchReport}
-                style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'10px',background:'#3b82f6',color:'#fff',border:'none',borderRadius:9,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                <RefreshCw size={14}/> Refresh Data
-              </button>
+      {/* Search */}
+      <div style={{ position:'relative',marginBottom:16 }}>
+        <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
+        <input type="text" placeholder="Cari transaksi..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+          style={{ width:'100%',padding:'11px 14px 11px 38px',border:'1.5px solid #e5e7eb',borderRadius:11,fontSize:14,background:'#f9fafb',outline:'none',boxSizing:'border-box' }}/>
+      </div>
+
+      {loading ? (
+        <div style={{ display:'flex',justifyContent:'center',padding:48 }}>
+          <div style={{ width:28,height:28,border:'3px solid #e5e7eb',borderTop:'3px solid #059669',borderRadius:'50%',animation:'sp .8s linear infinite' }}/>
+        </div>
+      ) : error ? (
+        <div style={{ background:'#fff1f2',border:'1.5px solid #fecdd3',borderRadius:14,padding:'24px',textAlign:'center' }}>
+          <p style={{ fontSize:14,color:'#be123c',marginBottom:12 }}>{error}</p>
+          <button onClick={() => { setLoading(true); setError(null); }}
+            style={{ padding:'8px 20px',background:'#059669',color:'#fff',border:'none',borderRadius:9,fontSize:13,fontWeight:600,cursor:'pointer' }}>Coba Lagi</button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:'center',padding:'48px 20px',background:'#f9fafb',borderRadius:14,border:'1.5px dashed #e5e7eb' }}>
+          <FileText size={40} color="#d1d5db" style={{ marginBottom:10 }}/>
+          <p style={{ fontSize:14,color:'#9ca3af',fontWeight:500 }}>Belum ada riwayat transaksi</p>
+        </div>
+      ) : (
+        <>
+          {/* DESKTOP: Table */}
+          <div className="mr-table-wrap" style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',overflow:'hidden',boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%',borderCollapse:'collapse',minWidth:500 }}>
+                <thead>
+                  <tr style={{ background:'#f9fafb',borderBottom:'1.5px solid #f3f4f6' }}>
+                    {['Aksi','Tanggal','Jenis Transaksi','Status','Jumlah'].map(h => (
+                      <th key={h} style={{ padding:'12px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((h, i) => (
+                    <tr key={h.id||i} style={{ borderBottom:'1px solid #f9fafb' }}
+                      onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
+                      onMouseLeave={e => (e.currentTarget.style.background='transparent')}>
+                      <td style={{ padding:'12px 16px' }}>
+                        <button onClick={() => handlePrint(h)}
+                          style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 10px',background:'#f0fdf4',color:'#059669',border:'1px solid #86efac',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer' }}>
+                          <Printer size={12}/> Cetak
+                        </button>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:13,color:'#6b7280',whiteSpace:'nowrap' }}>
+                        <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+                          <Calendar size={12} color="#9ca3af"/>{fmtDate(h.date)}
+                        </div>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:13,fontWeight:600,color:'#111827',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</td>
+                      <td style={{ padding:'12px 16px' }}>
+                        <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:'#f0fdf4',color:'#059669',border:'1px solid #86efac' }}>{h.status}</span>
+                      </td>
+                      <td style={{ padding:'12px 16px',fontSize:14,fontWeight:800,color:'#059669',whiteSpace:'nowrap' }}>{fmt(h.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Net summary card */}
-          {report && !loading && (
-            <div style={{ background: net>=0?'#f0fdf4':'#fff1f2', border:`1.5px solid ${net>=0?'#86efac':'#fecdd3'}`, borderRadius:14, padding:20 }}>
-              <p style={{ fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.05em',margin:'0 0 8px' }}>Selisih Bersih</p>
-              <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-                {net >= 0 ? <ArrowUp size={20} color="#059669"/> : <ArrowDown size={20} color="#e11d48"/>}
-                <p style={{ fontSize:'clamp(16px,2vw,22px)',fontWeight:800,color:net>=0?'#059669':'#e11d48',margin:0 }}>{net>=0?'+':''}{fmt(net)}</p>
-              </div>
-              <p style={{ fontSize:12,color:net>=0?'#059669':'#e11d48',margin:'4px 0 0',opacity:.75 }}>{net>=0?'Tabungan > Pinjaman':'Pinjaman > Tabungan'}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Main content */}
-        <div style={{ display:'flex',flexDirection:'column',gap:16 }}>
-          {loading ? (
-            <div style={{ display:'flex',justifyContent:'center',alignItems:'center',padding:80,background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6' }}>
-              <div style={{ width:32,height:32,border:'3px solid #e5e7eb',borderTop:'3px solid #3b82f6',borderRadius:'50%',animation:'sp .8s linear infinite' }} />
-            </div>
-          ) : error ? (
-            <div style={{ background:'#fff1f2',border:'1.5px solid #fecdd3',borderRadius:14,padding:'32px',textAlign:'center' }}>
-              <p style={{ fontSize:14,color:'#be123c',marginBottom:14 }}>{error}</p>
-              <button onClick={fetchReport} style={{ display:'inline-flex',alignItems:'center',gap:6,padding:'10px 20px',background:'#3b82f6',color:'#fff',border:'none',borderRadius:9,fontSize:13,fontWeight:600,cursor:'pointer' }}>
-                <RefreshCw size={14}/> Coba Lagi
-              </button>
-            </div>
-          ) : report ? (
-            <>
-              {/* Stats row */}
-              <div className="mr-stats">
-                {[
-                  { l:'Total Tabungan', v:fmt(report.totalSavings), Icon:DollarSign, c:'#059669', bg:'#f0fdf4', bd:'#86efac' },
-                  { l:'Total Pinjaman', v:fmt(report.totalLoans), Icon:TrendingUp, c:'#d97706', bg:'#fffbeb', bd:'#fde68a' },
-                  { l:'Jumlah Transaksi', v:String(report.transactionCount||0) + ' transaksi', Icon:BarChart3, c:'#3b82f6', bg:'#eff6ff', bd:'#bfdbfe' },
-                ].map(({ l,v,Icon,c,bg,bd }) => (
-                  <div key={l} style={{ background:bg,border:`1.5px solid ${bd}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:12 }}>
-                    <div style={{ width:40,height:40,borderRadius:11,background:c+'20',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-                      <Icon size={20} color={c} />
-                    </div>
-                    <div style={{ minWidth:0 }}>
-                      <p style={{ fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.04em',margin:0,marginBottom:4 }}>{l}</p>
-                      <p style={{ fontSize:'clamp(13px,1.5vw,17px)',fontWeight:800,color:'#111827',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{v}</p>
+          {/* MOBILE: Cards */}
+          <div className="mr-card">
+            {filtered.map((h, i) => (
+              <div key={h.id||i} style={{ background:'#fff',border:'1.5px solid #f3f4f6',borderRadius:14,padding:16,boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,gap:8 }}>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <p style={{ fontSize:14,fontWeight:700,color:'#111827',margin:'0 0 4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</p>
+                    <div style={{ display:'flex',alignItems:'center',gap:5 }}>
+                      <Calendar size={11} color="#9ca3af"/>
+                      <span style={{ fontSize:12,color:'#6b7280' }}>{fmtDate(h.date)}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {/* Chart */}
-              <div style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',padding:'20px',boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
-                <h3 style={{ fontSize:14,fontWeight:700,color:'#374151',margin:'0 0 16px' }}>Komparasi Tabungan vs Pinjaman — {MONTHS[month-1]} {year}</h3>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={chartData} margin={{ top:0,right:0,left:-10,bottom:0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="name" tick={{ fontSize:12, fill:'#6b7280' }} />
-                    <YAxis tickFormatter={fmtShort} tick={{ fontSize:11, fill:'#6b7280' }} width={56} />
-                    <Tooltip formatter={(v: number) => fmt(v)} contentStyle={{ borderRadius:8, border:'1px solid #e5e7eb', fontSize:13 }} />
-                    <Legend wrapperStyle={{ fontSize:13 }} />
-                    <Bar dataKey="Tabungan" fill="#10b981" radius={[6,6,0,0]} />
-                    <Bar dataKey="Pinjaman" fill="#f59e0b" radius={[6,6,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Detailed summary */}
-              <div style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',padding:'20px',boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
-                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16 }}>
-                  <h3 style={{ fontSize:14,fontWeight:700,color:'#374151',margin:0 }}>Ringkasan Laporan — {MONTHS[month-1]} {year}</h3>
-                  <button style={{ display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:'#3b82f6',color:'#fff',border:'none',borderRadius:9,fontSize:12,fontWeight:700,cursor:'pointer' }}>
-                    <Download size={13}/> Export PDF
-                  </button>
+                  <div style={{ textAlign:'right',flexShrink:0 }}>
+                    <p style={{ fontSize:16,fontWeight:800,color:'#059669',margin:0 }}>{fmt(h.amount)}</p>
+                    <span style={{ fontSize:10,fontWeight:700,color:'#059669',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:6,padding:'2px 8px',display:'inline-block',marginTop:4 }}>{h.status}</span>
+                  </div>
                 </div>
-                <div className="mr-summary">
-                  {[
-                    { l:'Pemasukan (Tabungan)', v:fmt(report.totalSavings), c:'#059669', bg:'#f0fdf4', bd:'#86efac' },
-                    { l:'Pengeluaran (Pinjaman)', v:fmt(report.totalLoans), c:'#d97706', bg:'#fffbeb', bd:'#fde68a' },
-                  ].map(({ l,v,c,bg,bd }) => (
-                    <div key={l} style={{ background:bg,border:`1.5px solid ${bd}`,borderRadius:10,padding:'16px 18px' }}>
-                      <p style={{ fontSize:12,fontWeight:600,color:'#6b7280',margin:'0 0 6px' }}>{l}</p>
-                      <p style={{ fontSize:'clamp(14px,1.8vw,20px)',fontWeight:800,color:c,margin:0 }}>{v}</p>
-                    </div>
-                  ))}
-                </div>
+                <button onClick={() => handlePrint(h)}
+                  style={{ width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'10px',background:'#f0fdf4',color:'#059669',border:'1.5px solid #86efac',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                  <Printer size={14}/> Cetak Bukti Transaksi
+                </button>
               </div>
-            </>
-          ) : null}
-        </div>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

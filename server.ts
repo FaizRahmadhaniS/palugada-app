@@ -352,6 +352,21 @@ app.use('/api', (req, res, next) => {
     res.json({ success: true });
   });
 
+  app.delete("/api/notifications/:id", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    const { id } = req.params;
+    await db.from('notifications').delete().eq('id', id).eq('user_id', user.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/notifications", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    await db.from('notifications').delete().eq('user_id', user.id);
+    res.json({ success: true });
+  });
+
   app.patch("/api/notifications/read-all", async (req, res) => {
     const user = (req.session as any).user;
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
@@ -390,11 +405,6 @@ app.use('/api', (req, res, next) => {
   app.post("/api/payment/create", async (req, res) => {
     const config = getPaymentConfig();
     const { amount, orderId, customerDetails, provider = config.provider } = req.body;
-    // FIXED: Prefer server host over browser origin (origin bisa salah kalau ada proxy/iframe)
-    // Priority: APP_URL env > req host (server actual URL) > origin (browser-sent)
-    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-    const host = req.headers.host;
-    const appUrl = process.env.APP_URL || (host ? `${proto}://${host}` : req.headers.origin) || 'http://localhost:3000';
     
     if (provider === 'glodipay') {
       // --- GLODIPAY INTEGRATION SKELETON ---
@@ -428,7 +438,7 @@ app.use('/api', (req, res, next) => {
         },
         customer_details: customerDetails,
         callbacks: {
-          finish: `${appUrl}/member/history`
+          finish: `${process.env.APP_URL || 'http://localhost:3000'}/member/history`
         }
       };
 
@@ -444,6 +454,179 @@ app.use('/api', (req, res, next) => {
           message: "Midtrans keys invalid, using mock URL."
         });
       }
+    }
+  });
+
+  // --- Pending Payments (Database-based) ---
+  // Pending payments disimpan langsung di tabel transactions dengan status='pending'
+  // description menyimpan JSON: {orderId, redirectUrl, depositType, selectedSchedules, selectedLoan}
+
+  // GET pending payments untuk user yang login
+  app.get("/api/payment/pending", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { data: txs } = await db
+        .from('transactions')
+        .select('*')
+        .eq('member_id', user.id)
+        .eq('status', 'pending')
+        .eq('category', 'Savings')
+        .order('created_at', { ascending: false });
+
+      const mapped = (txs || []).map((t: any) => {
+        let meta: any = {};
+        try { meta = JSON.parse(t.description || '{}'); } catch {}
+        return {
+          txId: t.id,
+          orderId: meta.orderId || t.id,
+          userId: t.member_id,
+          amount: t.amount,
+          redirectUrl: meta.redirectUrl || '',
+          depositType: meta.depositType || t.type,
+          selectedSchedules: meta.selectedSchedules || [],
+          selectedLoan: meta.selectedLoan || null,
+          createdAt: t.created_at,
+          status: 'pending'
+        };
+      });
+      res.json(mapped);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST buat pending payment — insert ke transactions dengan status='pending'
+  app.post("/api/payment/pending", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const { orderId, amount, redirectUrl, depositType, selectedSchedules, selectedLoan } = req.body;
+    const now = new Date().toISOString();
+    try {
+      const description = JSON.stringify({ orderId, redirectUrl, depositType, selectedSchedules: selectedSchedules || [], selectedLoan: selectedLoan || null });
+      const { data: inserted, error } = await db.from('transactions').insert({
+        member_id: user.id,
+        type: depositType,
+        category: 'Savings',
+        amount,
+        description,
+        status: 'pending',
+        created_at: now
+      }).select().single();
+      if (error) throw error;
+      const pending = {
+        txId: inserted.id,
+        orderId,
+        userId: user.id,
+        amount,
+        redirectUrl,
+        depositType,
+        selectedSchedules: selectedSchedules || [],
+        selectedLoan: selectedLoan || null,
+        createdAt: now,
+        status: 'pending'
+      };
+      res.json({ success: true, pending });
+    } catch (error: any) {
+      console.error("Create Pending Error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // DELETE batalkan pending payment
+  app.delete("/api/payment/pending/:orderId", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const { orderId } = req.params;
+    try {
+      // Cari berdasarkan orderId di dalam description JSON
+      const { data: txs } = await db.from('transactions')
+        .select('*').eq('member_id', user.id).eq('status', 'pending').eq('category', 'Savings');
+      const tx = (txs || []).find((t: any) => {
+        try { return JSON.parse(t.description || '{}').orderId === orderId; } catch { return false; }
+      });
+      if (tx) {
+        await db.from('transactions').delete().eq('id', tx.id);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // POST konfirmasi pembayaran — update status ke 'success', buat finance record, update saldo
+  app.post("/api/payment/confirm/:orderId", async (req, res) => {
+    const user = (req.session as any).user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const { orderId } = req.params;
+    const now = new Date().toISOString();
+    try {
+      // Cari pending transaction berdasarkan orderId di description
+      const { data: txs } = await db.from('transactions')
+        .select('*').eq('member_id', user.id).eq('status', 'pending').eq('category', 'Savings');
+      const tx = (txs || []).find((t: any) => {
+        try { return JSON.parse(t.description || '{}').orderId === orderId; } catch { return false; }
+      });
+      if (!tx) return res.status(404).json({ error: 'Pending payment tidak ditemukan' });
+
+      let meta: any = {};
+      try { meta = JSON.parse(tx.description || '{}'); } catch {}
+
+      if (meta.depositType === 'Pembayaran Pinjaman' && meta.selectedSchedules?.length > 0) {
+        // Proses cicilan pinjaman
+        for (const scheduleId of meta.selectedSchedules) {
+          const { data: schedule } = await db.from('loan_schedules').select('*').eq('id', scheduleId).maybeSingle();
+          if (schedule) {
+            await db.from('loan_repayments').insert({
+              id: `REP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              loan_id: schedule.loan_id || meta.selectedLoan,
+              schedule_id: scheduleId,
+              amount_paid: Math.round(schedule.amount_due),
+              payment_date: now,
+              status: 'completed',
+              company_code: 'PALUGADA',
+              created_by: user.id
+            });
+            await db.from('loan_schedules').update({ status: 'Paid' }).eq('id', scheduleId);
+          }
+        }
+        if (meta.selectedLoan) {
+          const { data: loan } = await db.from('loans').select('remaining_balance').eq('id', meta.selectedLoan).maybeSingle();
+          if (loan) {
+            const newBalance = Math.max(0, (loan.remaining_balance || 0) - tx.amount);
+            await db.from('loans').update({ remaining_balance: newBalance, status: newBalance <= 0 ? 'paid_off' : 'approved' }).eq('id', meta.selectedLoan);
+          }
+        }
+        // Update transaction description (clean) dan status
+        await db.from('transactions').update({
+          status: 'success',
+          description: `Pembayaran Pinjaman [${orderId}]`
+        }).eq('id', tx.id);
+      } else {
+        // Buat finance record
+        await db.from('finance').insert({
+          id: `FIN-${Date.now()}`,
+          type: 'Income', category: 'Savings', amount: tx.amount,
+          description: `Simpanan ${meta.depositType} - ${user.name} [${orderId}]`,
+          date: now.split('T')[0], company_code: 'PALUGADA', status: 1, is_deleted: 0,
+          created_by: user.id, created_date: now, last_updated_by: user.id, last_updated_date: now
+        });
+        // Update transaction: status 'success', type & description yang bersih
+        await db.from('transactions').update({
+          status: 'success',
+          type: meta.depositType,
+          description: `Simpanan ${meta.depositType} [${orderId}]`
+        }).eq('id', tx.id);
+        // Update saldo anggota
+        const { data: member } = await db.from('members').select('total_savings').eq('id', user.id).maybeSingle();
+        const newBalance = (member?.total_savings || 0) + tx.amount;
+        await db.from('members').update({ total_savings: newBalance }).eq('id', user.id);
+        await db.from('users').update({ total_savings: newBalance }).eq('id', user.id);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Confirm Payment Error:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
@@ -896,8 +1079,7 @@ app.use('/api', (req, res, next) => {
     const user = (req.session as any).user;
     console.log(`[Savings API] User role: ${user?.role}, userId: ${user?.id}`);
     
-    // Only count actual savings deposits (exclude withdrawal type)
-    let query = db.from('transactions').select('*').eq('category', 'Savings').neq('type', 'Withdrawal');
+    let query = db.from('transactions').select('*').eq('category', 'Savings');
     
     if (user && user.role !== 'admin') {
       query = query.eq('member_id', user.id);
@@ -916,22 +1098,17 @@ app.use('/api', (req, res, next) => {
       return acc;
     }, {});
 
-    const mapped = (transactions || []).map(t => {
-      // Extract savings sub-type (Wajib/Sukarela/Pokok) from description
-      const subTypeMatch = (t.description || '').match(/Simpanan (Wajib|Sukarela|Pokok)/i);
-      const displayType = subTypeMatch ? subTypeMatch[1] : (t.type === 'Withdrawal' ? 'Penarikan' : 'Sukarela');
-      return {
-        id: t.id,
-        memberId: t.member_id,
-        memberName: memberMap[t.member_id] || 'Unknown',
-        amount: t.amount,
-        type: displayType,
-        description: t.description,
-        status: t.status,
-        date: t.created_at,
-        createdDate: t.created_at
-      };
-    });
+    const mapped = (transactions || []).map(t => ({
+      id: t.id,
+      memberId: t.member_id,
+      memberName: memberMap[t.member_id] || 'Unknown',
+      amount: t.amount,
+      type: t.type,
+      description: t.description,
+      status: t.status,
+      date: t.created_at,
+      createdDate: t.created_at
+    }));
     
     console.log(`[Savings API] Returning ${mapped.length} items`);
     res.json(mapped);
@@ -969,22 +1146,45 @@ app.use('/api', (req, res, next) => {
   });
 
   app.post("/api/withdrawals", async (req, res) => {
-    const { amount, description, memberId } = req.body;
+    const { amount, description, memberId, bankName, accountNumber, accountHolder } = req.body;
     const user = (req.session as any).user;
     
     try {
-      // Check balance
-      const { data: member } = await db.from('members').select('total_savings, name').eq('id', memberId).single();
-      if (!member || (member.total_savings || 0) < amount) {
-        return res.status(400).json({ success: false, message: 'Saldo tidak mencukupi' });
+      // Check member exists
+      const { data: member } = await db.from('members').select('name').eq('id', memberId).single();
+      if (!member) {
+        return res.status(400).json({ success: false, message: 'Anggota tidak ditemukan' });
       }
+
+      // Hitung saldo sukarela dari tabel transactions
+      const { data: sukarelaDeposits } = await db.from('transactions')
+        .select('type, amount')
+        .eq('member_id', memberId)
+        .eq('category', 'Savings')
+        .eq('status', 'success')
+        .ilike('description', '%sukarela%');
+
+      const sukarelaSaldo = (sukarelaDeposits || []).reduce((sum: number, t: any) => {
+        return sum + (t.type === 'Withdrawal' ? -(t.amount || 0) : (t.amount || 0));
+      }, 0);
+
+      if (sukarelaSaldo < amount) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Saldo sukarela tidak mencukupi. Saldo tersedia: Rp ${Math.max(0, sukarelaSaldo).toLocaleString('id-ID')}` 
+        });
+      }
+
+      // Build description with bank info
+      const bankInfo = bankName ? `Bank: ${bankName} | Rek: ${accountNumber} | A/N: ${accountHolder}` : '';
+      const fullDescription = [bankInfo, description].filter(Boolean).join(' | ');
 
       const { data, error } = await db.from('transactions').insert({
         member_id: memberId,
         type: 'Withdrawal',
         category: 'Savings',
         amount: amount,
-        description: description,
+        description: fullDescription || 'Penarikan simpanan sukarela',
         status: 'pending'
       }).select().single();
 
@@ -1319,31 +1519,28 @@ app.use('/api', (req, res, next) => {
   });
 
   app.post("/api/savings", async (req, res) => {
-    const { memberId, amount, type } = req.body;
-    const user = (req.session as any).user;
-    const finalMemberId = memberId || user?.id;
-    const savingsType = type || 'Sukarela'; // Wajib / Sukarela / Pokok
-    
-    // FIXED: Use correct schema:
-    // - id is auto-generated UUID (don't send manual id)
-    // - type must be 'Deposit' (not 'Sukarela' - that's the savings sub-type)
-    // - Savings sub-type goes in description
-    const { data, error } = await db.from('transactions').insert({ 
-      member_id: finalMemberId,
-      type: 'Deposit',
-      category: 'Savings',
-      amount: Number(amount) || 0,
-      status: 'success',
-      description: `Setoran Simpanan ${savingsType}`
-    }).select();
-    
+    const { id, memberId, memberName, amount, type, date, companyCode, createdBy } = req.body;
+    const now = new Date().toISOString();
+    const { error } = await db.from('savings').insert({ 
+      id, 
+      member_id: memberId, 
+      member_name: memberName, 
+      amount, 
+      type, 
+      date,
+      company_code: companyCode || 'PALUGADA',
+      status: 1,
+      is_deleted: 0,
+      created_by: createdBy || 'system',
+      created_date: now,
+      last_updated_by: createdBy || 'system',
+      last_updated_date: now
+    });
     if (error) {
-      console.error("[Savings POST] Error:", error);
+      console.error("Error inserting saving:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
-    
-    console.log(`[Savings POST] ✓ Inserted: member=${finalMemberId}, amount=${amount}, type=${savingsType}`);
-    res.json({ success: true, data });
+    res.json({ success: true });
   });
 
   // Delete single savings transaction
@@ -1372,27 +1569,94 @@ app.use('/api', (req, res, next) => {
 
   // --- Finance API ---
   app.get("/api/finance", async (req, res) => {
-    const { data: finance } = await db.from('finance').select('*');
-    const mapped = (finance || []).map(f => ({
-      id: f.id,
-      type: f.type,
-      category: f.category,
-      amount: f.amount,
-      description: f.description,
-      date: f.date,
-      createdBy: f.created_by,
-      createdDate: f.created_date,
-      companyCode: f.company_code,
-      status: f.status,
-      isDeleted: f.is_deleted,
-      lastUpdatedBy: f.last_updated_by,
-      lastUpdatedDate: f.last_updated_date
-    }));
+    const { data: finance } = await db.from('finance').select('*').order('date', { ascending: false });
+
+    // 1. Try to resolve names from created_by (user IDs)
+    const userIds = [...new Set((finance || []).map((f: any) => f.created_by).filter((id: string) => id && id !== 'system' && !id.startsWith('LOAN') && !id.startsWith('FIN')))];
+    let userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const { data: users } = await db.from('users').select('id, name').in('id', userIds);
+      (users || []).forEach((u: any) => { userMap[u.id] = u.name; });
+    }
+
+    // 2. For loan repayment records, extract LOAN-ID from description and lookup member name
+    const loanIds = [...new Set(
+      (finance || [])
+        .map((f: any) => {
+          const match = (f.description || '').match(/LOAN-\d+/);
+          return match ? match[0] : null;
+        })
+        .filter(Boolean)
+    )];
+    let loanMemberMap: Record<string, string> = {};
+    if (loanIds.length > 0) {
+      const { data: loans } = await db.from('loans').select('id, member_name').in('id', loanIds);
+      (loans || []).forEach((l: any) => { loanMemberMap[l.id] = l.member_name; });
+    }
+
+    const mapped = (finance || []).map((f: any) => {
+      // Resolve member name
+      let memberName: string | null = userMap[f.created_by] || null;
+      if (!memberName) {
+        const match = (f.description || '').match(/LOAN-\d+/);
+        if (match) memberName = loanMemberMap[match[0]] || null;
+      }
+
+      return {
+        id: f.id,
+        type: f.type,
+        category: f.category,
+        amount: f.amount,
+        description: f.description,
+        date: f.date,
+        memberName,
+        createdBy: f.created_by,
+        createdDate: f.created_date,
+        companyCode: f.company_code,
+        status: f.status,
+        isDeleted: f.is_deleted,
+        lastUpdatedBy: f.last_updated_by,
+        lastUpdatedDate: f.last_updated_date
+      };
+    });
     res.json(mapped);
   });
 
+  // --- Cek status transaksi Midtrans ---
+  app.get("/api/payment/status/:orderId", async (req, res) => {
+    const config = getPaymentConfig();
+    const { orderId } = req.params;
+    try {
+      const baseUrl = config.isProduction
+        ? 'https://api.midtrans.com'
+        : 'https://api.sandbox.midtrans.com';
+      const auth = Buffer.from(`${config.serverKey}:`).toString('base64');
+      const response = await fetch(`${baseUrl}/v2/${orderId}/status`, {
+        headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' }
+      });
+      const data: any = await response.json();
+      // Midtrans status: settlement, capture, pending, deny, expire, cancel
+      const paid = ['settlement', 'capture'].includes(data.transaction_status);
+      res.json({ 
+        paid,
+        status: data.transaction_status || 'unknown',
+        raw: data
+      });
+    } catch (error: any) {
+      console.error('Midtrans status check error:', error.message);
+      // Jika tidak bisa cek (keys invalid/sandbox), kembalikan unknown
+      res.json({ paid: false, status: 'unknown', error: error.message });
+    }
+  });
+
   app.post("/api/finance", async (req, res) => {
+    const sessionUser = (req.session as any).user;
     const { id, type, category, amount, description, date, companyCode, createdBy, memberId, savingsType } = req.body;
+    // Gunakan session user ID sebagai fallback agar tidak error FK constraint
+    const effectiveCreatedBy = createdBy || sessionUser?.id;
+    if (!effectiveCreatedBy) {
+      return res.status(400).json({ success: false, error: 'User tidak terautentikasi' });
+    }
     const now = new Date().toISOString();
     
     try {
@@ -1403,9 +1667,9 @@ app.use('/api', (req, res, next) => {
         company_code: companyCode || 'PALUGADA',
         status: 1,
         is_deleted: 0,
-        created_by: createdBy || 'system',
+        created_by: effectiveCreatedBy,
         created_date: now,
-        last_updated_by: createdBy || 'system',
+        last_updated_by: effectiveCreatedBy,
         last_updated_date: now
       });
       

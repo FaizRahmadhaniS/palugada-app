@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Search, Printer, FileText, Calendar, TrendingUp } from 'lucide-react';
+import { Download, Search, Printer, FileText, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
-import JsBarcode from 'jsbarcode';
 
 const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
-const generateBarcode = (text: string) => {
-  const canvas = document.createElement('canvas');
-  JsBarcode(canvas, text, { format: 'CODE128', displayValue: false, height: 40, width: 2, margin: 0 });
-  return canvas.toDataURL('image/png');
-};
 
 export default function MemberReports({ user }: { user: any }) {
   const [history, setHistory] = useState<any[]>([]);
@@ -47,23 +42,34 @@ export default function MemberReports({ user }: { user: any }) {
     loadHistory();
   }, [user?.id]);
 
-  const exportPersonalPDF = () => {
+  const exportPersonalPDF = async () => {
     const doc = new jsPDF();
-    const reportId = `REP-MEM-${user.id.substring(0, 5)}-${Date.now()}`;
-    doc.setFillColor(16, 185, 129); doc.rect(0, 0, 210, 50, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFontSize(28); doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-    doc.text(`Laporan Aktivitas: ${user.name}`, 14, 32);
-    doc.addImage(generateBarcode(reportId), 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8); doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.setTextColor(0, 0, 0); doc.setFontSize(14);
-    doc.text('RIWAYAT TRANSAKSI PRIBADI', 14, 65);
-    autoTable(doc, {
-      startY: 75,
-      head: [['NO', 'TANGGAL', 'JENIS', 'STATUS', 'JUMLAH']],
-      body: history.map((h, i) => [i+1, fmtDate(h.date), h.type, h.status, fmt(h.amount)]),
-      headStyles: { fillColor: [16, 185, 129] }
+    const startY = await addPDFHeader(doc, {
+      reportId: `REP-MEM-${Date.now()}`,
+      title: 'Riwayat Transaksi Pribadi',
+      subtitle: `Anggota: ${user.name}`,
+      printedBy: user.name
     });
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'TANGGAL', 'JENIS TRANSAKSI', 'STATUS', 'JUMLAH']],
+      body: history.map((h, i) => [i + 1, fmtDate(h.date), h.type, h.status, fmt(h.amount)]),
+      headStyles: { fillColor: [16, 185, 129] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        1: { halign: 'center', cellWidth: 28 },
+        3: { halign: 'center', cellWidth: 24 },
+        4: { halign: 'right', cellWidth: 35 }
+      },
+      tableLineColor: [226, 232, 240] as [number,number,number],
+      tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc);
     doc.save(`laporan-saya-${Date.now()}.pdf`);
   };
 

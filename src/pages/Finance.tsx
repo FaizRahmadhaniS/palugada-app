@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Plus, Search, Filter, ArrowUpRight, ArrowDownRight, DollarSign, Trash2, Download, FileText } from 'lucide-react';
 import { cn } from '../types';
 import jsPDF from 'jspdf';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 
@@ -98,83 +99,47 @@ export default function Finance() {
   const totalExpense = finances.filter(f => f.type === 'Expense').reduce((sum, f) => sum + (f.amount || 0), 0);
   const balance = totalIncome - totalExpense;
 
-  const exportFinancePDF = () => {
+  const exportFinancePDF = async () => {
     const doc = new jsPDF();
     const reportId = `FIN-RPT-${Date.now()}`;
-    
-    // Header
-    doc.setFillColor(16, 185, 129);
-    doc.rect(0, 0, 210, 50, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PALUGADA COOP', 14, 25);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Koperasi Simpan Pinjam Masa Depan', 14, 32);
-    doc.text('Jl. Modern No. 123, Jakarta Selatan', 14, 37);
-
-    // Barcode
-    const barcodeData = generateBarcode(reportId);
-    doc.addImage(barcodeData, 'PNG', 140, 10, 55, 20);
-    doc.setFontSize(8);
-    doc.text(`REPORT ID: ${reportId}`, 140, 35);
-    doc.text(`GENERATED: ${new Date().toLocaleString('id-ID')}`, 140, 40);
-
-    // Title
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('LAPORAN KEUANGAN OPERASIONAL', 14, 65);
-    
-    // Summary
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total Pemasukan: Rp ${totalIncome.toLocaleString('id-ID')}`, 14, 75);
-    doc.text(`Total Pengeluaran: Rp ${totalExpense.toLocaleString('id-ID')}`, 14, 82);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(16, 185, 129);
-    doc.text(`Saldo Kas: Rp ${balance.toLocaleString('id-ID')}`, 14, 89);
-
-    doc.setTextColor(0, 0, 0);
-    const tableData = finances.map((f, index) => [
-      index + 1,
-      f.date,
-      f.category,
-      f.description,
-      f.type === 'Income' ? `Rp ${(f.amount || 0).toLocaleString('id-ID')}` : '',
-      f.type === 'Expense' ? `Rp ${(f.amount || 0).toLocaleString('id-ID')}` : ''
+    const startY = await addPDFHeader(doc, {
+      reportId,
+      title: 'Laporan Keuangan Operasional',
+      subtitle: `Pemasukan: Rp ${totalIncome.toLocaleString('id-ID')}  ·  Pengeluaran: Rp ${totalExpense.toLocaleString('id-ID')}  ·  Saldo: Rp ${balance.toLocaleString('id-ID')}`
+    });
+    const fmtDate = (d: string) => {
+      try { return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+      catch { return d?.split('T')[0] || d; }
+    };
+    const tableData = finances.map((f, i) => [
+      i + 1,
+      fmtDate(f.date),
+      f.category || '-',
+      (f.description || '-').replace(/\[PAY-\d+\]/g, '').trim(),
+      f.type === 'Income' ? `Rp ${(f.amount || 0).toLocaleString('id-ID')}` : '-',
+      f.type === 'Expense' ? `Rp ${(f.amount || 0).toLocaleString('id-ID')}` : '-'
     ]);
-
     autoTable(doc, {
-      startY: 100,
+      startY,
       head: [['NO', 'TANGGAL', 'KATEGORI', 'DESKRIPSI', 'PEMASUKAN', 'PENGELUARAN']],
       body: tableData,
-      headStyles: { 
-        fillColor: [16, 185, 129],
-        textColor: [255, 255, 255],
-        fontSize: 10,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      bodyStyles: { fontSize: 9 },
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 7.5, cellPadding: 2, minCellHeight: 6.5, overflow: 'linebreak', textColor: [15, 23, 42] as [number,number,number] },
       alternateRowStyles: { fillColor: [240, 253, 244] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 10 },
-        4: { halign: 'right' },
-        5: { halign: 'right' }
-      }
+        1: { cellWidth: 22, halign: 'center' },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 68 },
+        4: { halign: 'right', cellWidth: 30 },
+        5: { halign: 'right', cellWidth: 30 },
+      },
+      tableLineColor: [226, 232, 240], tableLineWidth: 0.3,
+      margin: { left: 6, right: 6 },
     });
-
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text(`Halaman ${i} dari ${pageCount} - Dokumen ini sah dikeluarkan oleh sistem Palugada.`, 105, 285, { align: 'center' });
-    }
-
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc);
     doc.save(`laporan-keuangan-${Date.now()}.pdf`);
   };
 
@@ -289,6 +254,7 @@ export default function Finance() {
               <tr>
                 <th className="px-3 sm:px-4 py-3 font-bold text-center">Aksi</th>
                 <th className="px-3 sm:px-4 py-3 font-bold">Tanggal</th>
+                <th className="px-3 sm:px-4 py-3 font-bold">Anggota</th>
                 <th className="px-3 sm:px-4 py-3 font-bold">Kategori</th>
                 <th className="px-3 sm:px-4 py-3 font-bold">Deskripsi</th>
                 <th className="px-3 sm:px-4 py-3 font-bold text-right">Jumlah</th>
@@ -297,11 +263,11 @@ export default function Finance() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-500 dark:text-slate-400">Memuat data...</td>
+                  <td colSpan={6} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-500 dark:text-slate-400">Memuat data...</td>
                 </tr>
               ) : finances.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-500 dark:text-slate-400">Belum ada transaksi</td>
+                  <td colSpan={6} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-500 dark:text-slate-400">Belum ada transaksi</td>
                 </tr>
               ) : (
                 finances.map((f) => (
@@ -314,7 +280,21 @@ export default function Finance() {
                         <Trash2 size={16} />
                       </button>
                     </td>
-                    <td className="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{f.date}</td>
+                    <td className="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap text-xs">
+                      {f.date ? new Date(f.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                    </td>
+                    <td className="px-3 sm:px-4 py-3">
+                      {f.memberName ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex-shrink-0">
+                            {f.memberName.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-900 dark:text-white truncate max-w-[100px]">{f.memberName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Sistem</span>
+                      )}
+                    </td>
                     <td className="px-3 sm:px-4 py-3">
                       <span className={cn(
                          "px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap",
@@ -323,12 +303,12 @@ export default function Finance() {
                         {f.category}
                       </span>
                     </td>
-                    <td className="px-3 sm:px-4 py-3 text-slate-900 dark:text-white truncate max-w-xs">{f.description}</td>
+                    <td className="px-3 sm:px-4 py-3 text-slate-900 dark:text-white truncate max-w-xs text-xs">{f.description}</td>
                     <td className={cn(
                       "px-3 sm:px-4 py-3 text-right font-bold whitespace-nowrap",
                       f.type === 'Income' ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                     )}>
-                      {f.type === 'Income' ? '+' : '-'} Rp {((f.amount || 0) / 1000000).toFixed(1)}jt
+                      {f.type === 'Income' ? '+' : '-'} Rp {(f.amount || 0).toLocaleString('id-ID')}
                     </td>
                   </tr>
                 ))
