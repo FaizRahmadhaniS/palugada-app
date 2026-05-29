@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDialog } from '../components/Dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -35,6 +35,17 @@ export default function Withdrawals({ user }: { user?: any }) {
   const [currentUser, setCurrentUser] = useState(user);
   const [adminFee, setAdminFee] = useState(5000);
   const [bankName, setBankName] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  const filteredWithdrawals = useMemo(() => withdrawals.filter(w => {
+    const d = w.created_at ? w.created_at.split('T')[0] : '';
+    const matchStatus = !filterStatus || w.status === filterStatus;
+    const matchFrom = !filterDateFrom || d >= filterDateFrom;
+    const matchTo = !filterDateTo || d <= filterDateTo;
+    return matchStatus && matchFrom && matchTo;
+  }), [withdrawals, filterStatus, filterDateFrom, filterDateTo]);
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
 
@@ -172,7 +183,7 @@ export default function Withdrawals({ user }: { user?: any }) {
     autoTable(doc, {
       startY,
       head: [['NO', 'ANGGOTA', 'TANGGAL', 'JUMLAH', 'KETERANGAN / REKENING', 'STATUS']],
-      body: withdrawals.map((w, i) => [
+      body: filteredWithdrawals.map((w, i) => [
         i + 1,
         w.memberName || '-',
         new Date(w.created_at).toLocaleDateString('id-ID'),
@@ -261,11 +272,33 @@ export default function Withdrawals({ user }: { user?: any }) {
       )}
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/20">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-800/20">
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <History size={18} className="text-blue-600" />
-            Riwayat Penarikan
+            <History size={18} className="text-blue-600" /> Riwayat Penarikan
           </h3>
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-center gap-3">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="">Semua Status</option>
+              <option value="pending">Menunggu</option>
+              <option value="success">Berhasil</option>
+              <option value="failed">Ditolak</option>
+            </select>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-xs font-medium text-slate-500">Tanggal:</span>
+              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+              <span className="text-slate-400">—</span>
+              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+            </div>
+            {(filterStatus || filterDateFrom || filterDateTo) && (
+              <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+                className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">✕ Reset</button>
+            )}
+            <span className="text-xs text-slate-400 ml-auto">{filteredWithdrawals.length} dari {withdrawals.length} transaksi</span>
+          </div>
         </div>
 
         <style>{`
@@ -292,7 +325,7 @@ export default function Withdrawals({ user }: { user?: any }) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
                 <tr><td colSpan={isAdmin ? 6 : 4} className="px-6 py-12 text-center text-slate-500">Memuat data...</td></tr>
-              ) : withdrawals.length > 0 ? withdrawals.map((w) => (
+              ) : filteredWithdrawals.length > 0 ? filteredWithdrawals.map((w) => (
                 <tr key={w.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
                     {new Date(w.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -348,7 +381,7 @@ export default function Withdrawals({ user }: { user?: any }) {
             <div style={{ textAlign:'center', padding:32, color:'#9ca3af' }}>Memuat data...</div>
           ) : withdrawals.length === 0 ? (
             <div style={{ textAlign:'center', padding:32, color:'#9ca3af' }}>Belum ada riwayat penarikan</div>
-          ) : withdrawals.map((w) => (
+          ) : filteredWithdrawals.map((w) => (
             <div key={w.id} style={{ background:'#fff', border:'1.5px solid #f3f4f6', borderRadius:14, padding:14 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:10 }}>
                 <div style={{ flex:1, minWidth:0 }}>

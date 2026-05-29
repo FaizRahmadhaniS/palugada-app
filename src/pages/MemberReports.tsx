@@ -13,6 +13,10 @@ export default function MemberReports({ user }: { user: any }) {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
   useEffect(() => {
     if (!user?.id) { setError('User tidak ditemukan'); setLoading(false); return; }
     const loadHistory = async () => {
@@ -92,10 +96,14 @@ export default function MemberReports({ user }: { user: any }) {
     w.document.close();
   };
 
-  const filtered = history.filter(h =>
-    (h.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (h.type || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = history.filter(h => {
+    const matchSearch = (h.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || (h.type || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = !filterStatus || (h.status || '').toLowerCase() === filterStatus;
+    const d = (h.date || '').split('T')[0];
+    const matchFrom = !filterDateFrom || d >= filterDateFrom;
+    const matchTo = !filterDateTo || d <= filterDateTo;
+    return matchSearch && matchStatus && matchFrom && matchTo;
+  });
 
   return (
     <div style={{ padding: '20px 16px', width: '100%' }}>
@@ -120,11 +128,31 @@ export default function MemberReports({ user }: { user: any }) {
         </button>
       </div>
 
-      {/* Search */}
-      <div style={{ position:'relative',marginBottom:16 }}>
-        <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
-        <input type="text" placeholder="Cari transaksi..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-          style={{ width:'100%',padding:'11px 14px 11px 38px',border:'1.5px solid #e5e7eb',borderRadius:11,fontSize:14,background:'#f9fafb',outline:'none',boxSizing:'border-box' }}/>
+      {/* Search + Filter */}
+      <div style={{ display:'flex',flexWrap:'wrap',gap:10,marginBottom:16,alignItems:'center' }}>
+        <div style={{ position:'relative' }}>
+          <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
+          <input type="text" placeholder="Cari transaksi..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            style={{ padding:'9px 12px 9px 36px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',width:200 }}/>
+        </div>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          style={{ padding:'9px 12px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',color:'#374151' }}>
+          <option value="">Semua Status</option>
+          <option value="success">Berhasil</option>
+          <option value="pending">Pending</option>
+          <option value="failed">Gagal</option>
+        </select>
+        <span style={{ fontSize:12,color:'#9ca3af',fontWeight:600 }}>Tanggal:</span>
+        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
+        <span style={{ color:'#9ca3af' }}>—</span>
+        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
+        {(filterStatus || filterDateFrom || filterDateTo) && (
+          <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+            style={{ padding:'6px 12px',background:'#fee2e2',color:'#ef4444',border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer' }}>✕ Reset</button>
+        )}
+        <span style={{ fontSize:12,color:'#9ca3af',marginLeft:'auto' }}>{filtered.length} transaksi</span>
       </div>
 
       {loading ? (

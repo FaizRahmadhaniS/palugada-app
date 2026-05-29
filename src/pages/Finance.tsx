@@ -1,17 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Search, Filter, ArrowUpRight, ArrowDownRight, DollarSign, Trash2, Download, FileText } from 'lucide-react';
+import { Plus, Search, Filter, ArrowUpRight, ArrowDownRight, DollarSign, Trash2, FileText, Table } from 'lucide-react';
 import { cn } from '../types';
 import jsPDF from 'jspdf';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
-import JsBarcode from 'jsbarcode';
-
-const generateBarcode = (text: string) => {
-  const canvas = document.createElement('canvas');
-  JsBarcode(canvas, text, { format: 'CODE128', displayValue: false, height: 40, width: 2, margin: 0 });
-  return canvas.toDataURL('image/png');
-};
+import * as XLSX from 'xlsx';
 
 export default function Finance() {
   const [finances, setFinances] = useState<any[]>([]);
@@ -19,13 +13,26 @@ export default function Finance() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [formData, setFormData] = useState({
-    type: 'Income',
-    category: 'Operasional',
-    amount: '',
-    description: '',
-    date: new Date().toISOString().split('T')[0]
+    type: 'Income', category: 'Operasional', amount: '',
+    description: '', date: new Date().toISOString().split('T')[0]
   });
+
+  const filteredFinances = useMemo(() => finances.filter(f => {
+    const matchSearch = !searchTerm || f.description?.toLowerCase().includes(searchTerm.toLowerCase()) || f.category?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchType = !filterType || f.type === filterType;
+    const matchFrom = !filterDateFrom || f.date >= filterDateFrom;
+    const matchTo = !filterDateTo || f.date <= filterDateTo;
+    return matchSearch && matchType && matchFrom && matchTo;
+  }), [finances, searchTerm, filterType, filterDateFrom, filterDateTo]);
+
+  const totalIncome = filteredFinances.filter(f => f.type === 'Income').reduce((s, f) => s + (f.amount || 0), 0);
+  const totalExpense = filteredFinances.filter(f => f.type === 'Expense').reduce((s, f) => s + (f.amount || 0), 0);
+  const balance = totalIncome - totalExpense;
 
   useEffect(() => {
     fetchFinances();
@@ -95,9 +102,25 @@ export default function Finance() {
     }
   };
 
-  const totalIncome = finances.filter(f => f.type === 'Income').reduce((sum, f) => sum + (f.amount || 0), 0);
-  const totalExpense = finances.filter(f => f.type === 'Expense').reduce((sum, f) => sum + (f.amount || 0), 0);
-  const balance = totalIncome - totalExpense;
+  const exportFinanceExcel = () => {
+    const wsData = [
+      ['NO', 'TANGGAL', 'TIPE', 'KATEGORI', 'DESKRIPSI', 'PEMASUKAN', 'PENGELUARAN'],
+      ...filteredFinances.map((f, i) => {
+        const d = f.date ? new Date(f.date).toLocaleDateString('id-ID') : '-';
+        return [i + 1, d, f.type, f.category, (f.description || '').replace(/\[PAY-\d+\]/g, '').trim(),
+          f.type === 'Income' ? f.amount : 0,
+          f.type === 'Expense' ? f.amount : 0];
+      }),
+      ['', '', '', '', 'TOTAL PEMASUKAN', totalIncome, ''],
+      ['', '', '', '', 'TOTAL PENGELUARAN', '', totalExpense],
+      ['', '', '', '', 'SALDO', balance, ''],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 45 }, { wch: 18 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Laporan Keuangan');
+    XLSX.writeFile(wb, `laporan-keuangan-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   const exportFinancePDF = async () => {
     const doc = new jsPDF();
@@ -111,7 +134,7 @@ export default function Finance() {
       try { return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
       catch { return d?.split('T')[0] || d; }
     };
-    const tableData = finances.map((f, i) => [
+    const tableData = filteredFinances.map((f, i) => [
       i + 1,
       fmtDate(f.date),
       f.category || '-',
@@ -145,56 +168,52 @@ export default function Finance() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Keuangan Operasional</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Kelola arus kas operasional (transaksi simpanan/pinjaman dicatat otomatis)</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Kelola arus kas operasional</p>
         </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => {
-              setFormData({
-                type: 'Income',
-                category: 'Operasional',
-                amount: '',
-                description: '',
-                date: new Date().toISOString().split('T')[0]
-              });
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium"
-          >
-            <Plus size={18} />
-            Catat Transaksi
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => { setFormData({ type: 'Income', category: 'Operasional', amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setIsModalOpen(true); }}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
+            <Plus size={18} /> Catat Transaksi
           </button>
-          <button 
-            onClick={() => {
-              // Generate CSV
-              const headers = ['Tipe', 'Kategori', 'Jumlah', 'Deskripsi', 'Tanggal'];
-              const csv = [headers, ...finances.map(f => [f.type, f.category, f.amount, f.description, f.date])].map(row => row.join(',')).join('\n');
-              const blob = new Blob([csv], { type: 'text/csv' });
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `finance_${new Date().toISOString().split('T')[0]}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              window.URL.revokeObjectURL(url);
-              document.body.removeChild(a);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium"
-          >
-            <Download size={18} />
-            Unduh CSV
+          <button onClick={exportFinanceExcel} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
+            <Table size={18} /> Excel
           </button>
-          <button 
-            onClick={exportFinancePDF}
-            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium"
-          >
-            <FileText size={18} />
-            Unduh PDF
+          <button onClick={exportFinancePDF} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
+            <FileText size={18} /> PDF
           </button>
         </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-wrap gap-3 items-center">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+          <input type="text" placeholder="Cari deskripsi / kategori..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            className="pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 w-52" />
+        </div>
+        <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          className="px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none">
+          <option value="">Semua Tipe</option>
+          <option value="Income">Pemasukan</option>
+          <option value="Expense">Pengeluaran</option>
+        </select>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-slate-500 text-xs font-medium">Tanggal:</span>
+          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+            className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none text-sm" />
+          <span className="text-slate-400">—</span>
+          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+            className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none text-sm" />
+        </div>
+        {(filterType || filterDateFrom || filterDateTo || searchTerm) && (
+          <button onClick={() => { setSearchTerm(''); setFilterType(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">✕ Reset</button>
+        )}
+        <span className="text-xs text-slate-400 ml-auto">{filteredFinances.length} dari {finances.length} transaksi</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -270,7 +289,7 @@ export default function Finance() {
                   <td colSpan={6} className="px-3 sm:px-4 py-6 sm:py-8 text-center text-slate-500 dark:text-slate-400">Belum ada transaksi</td>
                 </tr>
               ) : (
-                finances.map((f) => (
+                filteredFinances.map((f) => (
                   <tr key={f.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="px-3 sm:px-4 py-3 text-center">
                       <button 

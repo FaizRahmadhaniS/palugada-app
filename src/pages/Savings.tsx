@@ -131,6 +131,11 @@ export default function Savings({ user }: { user?: any }) {
   });
   const { t } = useLanguage();
 
+  // Filter states
+  const [filterType, setFilterType] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
   // Pending (dari localStorage)
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [activePendingModal, setActivePendingModal] = useState<any | null>(null);
@@ -334,6 +339,15 @@ export default function Savings({ user }: { user?: any }) {
     else dlgAlert({ title: 'Perhatian', message: 'Gagal menghapus transaksi', type: 'error', confirmText: 'OK' });
   };
 
+  // Filtered savings (member view)
+  const filteredSavings = useMemo(() => savings.filter(s => {
+    const matchType = !filterType || s.type === filterType;
+    const d = (s.date || '').split('T')[0];
+    const matchFrom = !filterDateFrom || d >= filterDateFrom;
+    const matchTo = !filterDateTo || d <= filterDateTo;
+    return matchType && matchFrom && matchTo;
+  }), [savings, filterType, filterDateFrom, filterDateTo]);
+
   const groupedSavings = useMemo(() => {
     const groups: Record<string, any> = {};
     savings.forEach(s => {
@@ -349,13 +363,14 @@ export default function Savings({ user }: { user?: any }) {
   const exportSavingsPDF = async () => {
     const doc = new jsPDF();
     const reportId = `SAV-${Date.now()}`;
+    const filterInfo = [filterType && `Jenis: ${filterType}`, filterDateFrom && `Dari: ${filterDateFrom}`, filterDateTo && `s/d: ${filterDateTo}`].filter(Boolean).join(' · ');
     const startY = await addPDFHeader(doc, {
       reportId,
       title: isAdmin ? 'Laporan Simpanan Semua Anggota' : 'Laporan Simpanan Pribadi',
-      subtitle: `Dicetak pada: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+      subtitle: filterInfo || `Dicetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
       printedBy: currentUser?.name
     });
-    const confirmedSavings = savings.filter(s => s.status !== 'pending');
+    const confirmedSavings = filteredSavings.filter(s => s.status !== 'pending');
     const td = isAdmin
       ? (groupedSavings as any[]).map((g, i) => [i + 1, g.memberName, `Rp ${g.totalAmount.toLocaleString('id-ID')}`, g.transactions.length])
       : confirmedSavings.map((s, i) => [i + 1, new Date(s.date).toLocaleDateString('id-ID'), s.type, `Rp ${(s.amount || 0).toLocaleString('id-ID')}`, s.description || '-']);
@@ -527,13 +542,41 @@ export default function Savings({ user }: { user?: any }) {
           )}
 
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/20">
-              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><History size={18} className="text-blue-600" />{isAdmin ? 'Data Simpanan Seluruh Anggota' : 'Riwayat Transaksi Simpanan'}</h3>
-              {isAdmin && (
-                <div className="relative w-full max-w-xs">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input type="text" placeholder="Cari nama anggota..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><History size={18} className="text-blue-600" />{isAdmin ? 'Data Simpanan Seluruh Anggota' : 'Riwayat Transaksi Simpanan'}</h3>
+                {isAdmin && (
+                  <div className="relative w-full max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input type="text" placeholder="Cari nama anggota..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                )}
+              </div>
+              {/* Filter tanggal + jenis (member only) */}
+              {!isAdmin && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <select value={filterType} onChange={e => setFilterType(e.target.value)}
+                    className="px-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="">Semua Jenis</option>
+                    <option value="Simpanan Wajib">Simpanan Wajib</option>
+                    <option value="Simpanan Sukarela">Simpanan Sukarela</option>
+                    <option value="Pembayaran Pinjaman">Pembayaran Pinjaman</option>
+                    <option value="Deposit">Deposit</option>
+                  </select>
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="text-xs font-medium">Tanggal:</span>
+                    <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                      className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+                    <span className="text-slate-400">—</span>
+                    <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                      className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+                  </div>
+                  {(filterType || filterDateFrom || filterDateTo) && (
+                    <button onClick={() => { setFilterType(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+                      className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">✕ Reset</button>
+                  )}
+                  <span className="text-xs text-slate-400">{filteredSavings.filter(s => s.status !== 'pending').length} transaksi</span>
                 </div>
               )}
             </div>
@@ -593,8 +636,8 @@ export default function Savings({ user }: { user?: any }) {
                           </React.Fragment>
                         ))
                     ) : (
-                      savings.length === 0 ? <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Belum ada riwayat simpanan</td></tr>
-                        : savings.map(tx => (
+                      filteredSavings.length === 0 ? <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">Belum ada riwayat simpanan</td></tr>
+                        : filteredSavings.map(tx => (
                           <tr key={tx.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
                             <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
                             <td className="px-6 py-4"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 flex items-center justify-center"><PiggyBank size={16} /></div><span className="font-bold text-slate-900 dark:text-white">{tx.type || 'Simpanan'}</span></div></td>
@@ -635,8 +678,8 @@ export default function Savings({ user }: { user?: any }) {
                       </div>
                     ))
                 ) : (
-                  savings.length === 0 ? <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>Belum ada riwayat simpanan</div>
-                    : savings.map((tx: any) => (
+                  filteredSavings.length === 0 ? <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>Belum ada riwayat simpanan</div>
+                    : filteredSavings.map((tx: any) => (
                       <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: '#fff', border: '1.5px solid #f3f4f6', borderRadius: 14 }}>
                         <div><p style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: '0 0 3px' }}>{tx.type || 'Simpanan'}</p><p style={{ fontSize: 12, color: '#9ca3af' }}>{new Date(tx.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
                         <div style={{ textAlign: 'right' }}>

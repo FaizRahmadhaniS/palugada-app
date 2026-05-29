@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Download, FileText, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+import { Download, FileText, Calendar, DollarSign, TrendingUp, Search } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
@@ -12,8 +12,20 @@ export default function MemberStatement({ user }: { user: any }) {
   const [statement, setStatement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
 
   useEffect(() => { fetchStatement(); }, [user]);
+
+  const filteredTxs = useMemo(() => {
+    const txs = statement?.transactions || [];
+    return txs.filter((t: any) => {
+      const matchStatus = !filterStatus || (t.status || '').toLowerCase() === filterStatus;
+      const d = (t.created_at || t.date || '').split('T')[0];
+      return matchStatus && (!filterDateFrom || d >= filterDateFrom) && (!filterDateTo || d <= filterDateTo);
+    });
+  }, [statement, filterStatus, filterDateFrom, filterDateTo]);
 
   const fetchStatement = async () => {
     setLoading(true);
@@ -118,7 +130,7 @@ export default function MemberStatement({ user }: { user: any }) {
     doc.setTextColor(15, 23, 42);
     doc.text('RIWAYAT TRANSAKSI', 14, afterSummary);
 
-    const txs = (statement.transactions || []).map((t: any, i: number) => [
+    const txs = (filteredTxs).map((t: any, i: number) => [
       i + 1,
       fmtDate(t.created_at || t.date),
       (t.description || t.type || '-').replace(/\[PAY-\d+\]/g, '').trim(),
@@ -256,11 +268,33 @@ export default function MemberStatement({ user }: { user: any }) {
           transition={{ delay: 0.5 }}
           className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
         >
-          <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Calendar size={24} className="text-emerald-600" />
               Riwayat Transaksi
             </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Semua Status</option>
+                <option value="success">Berhasil</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Gagal</option>
+              </select>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-xs font-medium text-slate-500">Tanggal:</span>
+                <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                  className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+                <span className="text-slate-400">—</span>
+                <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                  className="px-2 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none" />
+              </div>
+              {(filterStatus || filterDateFrom || filterDateTo) && (
+                <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+                  className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">✕ Reset</button>
+              )}
+              <span className="text-xs text-slate-400 ml-auto">{filteredTxs.length} transaksi</span>
+            </div>
           </div>
           
           <div className="overflow-x-auto">
@@ -274,7 +308,7 @@ export default function MemberStatement({ user }: { user: any }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {statement.transactions.map((t: any, idx: number) => (
+                {filteredTxs.map((t: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
                       {new Date(t.created_at || t.date).toLocaleDateString('id-ID')}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, CheckCircle, XCircle, FileText, X, Calendar, CreditCard, Clock, TrendingDown, ChevronRight, AlertCircle, History, ListChecks } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -12,12 +12,25 @@ export default function Loans() {
   const [loans, setLoans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'jadwal' | 'riwayat'>('info');
   const { t } = useLanguage();
+
+  const filteredLoans = useMemo(() => loans.filter(l => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || l.memberName?.toLowerCase().includes(q) || l.id?.toLowerCase().includes(q);
+    const matchStatus = !filterStatus || l.status === filterStatus;
+    const d = (l.date || '').split('T')[0];
+    const matchFrom = !filterDateFrom || d >= filterDateFrom;
+    const matchTo = !filterDateTo || d <= filterDateTo;
+    return matchSearch && matchStatus && matchFrom && matchTo;
+  }), [loans, search, filterStatus, filterDateFrom, filterDateTo]);
 
   useEffect(() => { fetchLoans(); }, []);
 
@@ -73,7 +86,7 @@ export default function Loans() {
     autoTable(doc, {
       startY,
       head: [['NO', 'ANGGOTA', 'JUMLAH', 'TENOR', 'SISA', 'STATUS', 'TANGGAL']],
-      body: loans.map((l, i) => [
+      body: filteredLoans.map((l, i) => [
         i + 1,
         l.memberName || 'N/A',
         fmt(l.amount),
@@ -102,10 +115,7 @@ export default function Loans() {
     doc.save(`laporan-pinjaman-${Date.now()}.pdf`);
   };
 
-  const filtered = loans.filter(l =>
-    (l.memberName||'').toLowerCase().includes(search.toLowerCase()) ||
-    (l.id||'').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = filteredLoans;
 
   // Fix: use paid_amount if available, else fallback to amount - remaining
   const getPaid = (loan: any) => loan.paid_amount ?? Math.max(0, (loan.amount||0) - (loan.remainingBalance||0));
@@ -327,7 +337,7 @@ export default function Loans() {
       )}
 
       {/* Page Header */}
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:12 }}>
         <div>
           <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Data Pinjaman</h1>
           <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Kelola data pinjaman anggota</p>
@@ -337,11 +347,32 @@ export default function Loans() {
         </button>
       </div>
 
-      {/* Search */}
-      <div style={{ position:'relative',marginBottom:16 }}>
-        <Search size={16} style={{ position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }} />
-        <input type="text" placeholder="Cari nama anggota..." value={search} onChange={e => setSearch(e.target.value)}
-          style={{ width:'100%',padding:'11px 14px 11px 40px',border:'1.5px solid #e5e7eb',borderRadius:11,fontSize:14,background:'#f9fafb',outline:'none',boxSizing:'border-box' }} />
+      {/* Filter bar */}
+      <div style={{ display:'flex',flexWrap:'wrap',gap:10,marginBottom:12,alignItems:'center' }}>
+        <div style={{ position:'relative' }}>
+          <Search size={15} style={{ position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }} />
+          <input type="text" placeholder="Cari nama / ID..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ padding:'9px 12px 9px 36px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',width:200 }} />
+        </div>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          style={{ padding:'9px 12px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',color:'#374151' }}>
+          <option value="">Semua Status</option>
+          <option value="pending">Menunggu</option>
+          <option value="approved">Disetujui</option>
+          <option value="paid_off">Lunas</option>
+          <option value="rejected">Ditolak</option>
+        </select>
+        <span style={{ fontSize:12,color:'#9ca3af',fontWeight:600 }}>Tanggal:</span>
+        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
+        <span style={{ color:'#9ca3af' }}>—</span>
+        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
+        {(filterStatus || filterDateFrom || filterDateTo) && (
+          <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+            style={{ padding:'6px 12px',background:'#fee2e2',color:'#ef4444',border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer' }}>✕ Reset</button>
+        )}
+        <span style={{ fontSize:12,color:'#9ca3af',marginLeft:'auto' }}>{filteredLoans.length} dari {loans.length} pinjaman</span>
       </div>
 
       {/* Table */}
