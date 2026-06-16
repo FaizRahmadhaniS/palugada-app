@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Search, Printer, FileText, Calendar } from 'lucide-react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 import jsPDF from 'jspdf';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
@@ -46,7 +47,8 @@ export default function MemberReports({ user }: { user: any }) {
     loadHistory();
   }, [user?.id]);
 
-  const exportPersonalPDF = async () => {
+  const [mrPreviewOpen, setMrPreviewOpen] = useState(false);
+  const exportPersonalPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const startY = await addPDFHeader(doc, {
       reportId: `REP-MEM-${Date.now()}`,
@@ -74,7 +76,7 @@ export default function MemberReports({ user }: { user: any }) {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 8);
     addPDFFooter(doc);
-    doc.save(`laporan-saya-${Date.now()}.pdf`);
+    return doc;
   };
 
   const handlePrint = (t: any) => {
@@ -122,7 +124,7 @@ export default function MemberReports({ user }: { user: any }) {
           <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Riwayat & Laporan</h1>
           <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Riwayat transaksi dan bukti pembayaran Anda</p>
         </div>
-        <button onClick={exportPersonalPDF}
+        <button onClick={() => setMrPreviewOpen(true)}
           style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#059669',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
           <Download size={16}/> Unduh PDF
         </button>
@@ -237,6 +239,26 @@ export default function MemberReports({ user }: { user: any }) {
           </div>
         </>
       )}
+
+      <ReportPreviewModal
+        isOpen={mrPreviewOpen}
+        onClose={() => setMrPreviewOpen(false)}
+        title="Laporan Transaksi Pribadi"
+        generatePDF={exportPersonalPDF}
+        pdfFilename={`laporan-saya-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','TANGGAL','JENIS TRANSAKSI','STATUS','JUMLAH'],
+          rows: filtered.map((h: any, i: number) => [
+            i+1,
+            h.date ? new Date(h.date).toLocaleDateString('id-ID') : '-',
+            h.type||'-',
+            h.status||'-',
+            `Rp ${(h.amount||0).toLocaleString('id-ID')}`
+          ]) as (string|number)[][],
+          filename: `laporan-saya-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </div>
   );
 }

@@ -8,11 +8,14 @@ import jsPDF from 'jspdf';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 
 export default function Members() {
   const { confirm: dlgConfirm, alert: dlgAlert } = useDialog();
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'pdf' | 'excel'>('pdf');
   const [loadError, setLoadError] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [viewerData, setViewerData] = useState<{ src: string; title: string } | null>(null);
@@ -64,8 +67,12 @@ export default function Members() {
     else dlgAlert({ title: 'Error', message: data.error || 'Gagal menghapus', type: 'error', confirmText: 'OK' });
   };
 
-  // ── Print detail anggota — jsPDF baru ──────────────────────────────────
-  const handlePrintMember = async (member: any) => {
+  // ── Print detail anggota — preview dulu ───────────────────────────────
+  const [memberDetailPreview, setMemberDetailPreview] = useState<{ open: boolean; member: any | null }>({ open: false, member: null });
+
+  const generateMemberDetailPDF = async (): Promise<jsPDF> => {
+    const member = memberDetailPreview.member;
+    if (!member) throw new Error('No member');
     const doc = new jsPDF();
     const color: [number, number, number] = [16, 185, 129];
     const startY = await addPDFHeader(doc, {
@@ -102,11 +109,15 @@ export default function Members() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 10);
     addPDFFooter(doc, color);
-    doc.save(`anggota-${(member.name || 'detail').replace(/\s+/g, '-')}.pdf`);
+    return doc;
+  };
+
+  const handlePrintMember = (member: any) => {
+    setMemberDetailPreview({ open: true, member });
   };
 
   // ── Export PDF daftar (pakai filter) ─────────────────────────────────
-  const exportMembersPDF = async () => {
+  const generateMembersPDF = async (): Promise<jsPDF> => {
     const doc = new jsPDF();
     const filterInfo = [filterStatus && `Status: ${filterStatus}`, filterType && `Tipe: ${filterType}`].filter(Boolean).join(' · ');
     const startY = await addPDFHeader(doc, {
@@ -126,11 +137,11 @@ export default function Members() {
       margin: { left: 14, right: 14 }
     });
     addPDFFooter(doc);
-    doc.save(`daftar-anggota-${Date.now()}.pdf`);
+    return doc;
   };
 
   // ── Export Excel ──────────────────────────────────────────────────────
-  const exportMembersExcel = () => {
+  const doMembersExcelDownload = () => {
     const wsData = [
       ['NO', 'NAMA', 'EMAIL', 'TELEPON', 'NIK', 'ALAMAT', 'TIPE', 'STATUS', 'TGL BERGABUNG', 'TOTAL SIMPANAN', 'TOTAL SHU'],
       ...filteredMembers.map((m, i) => [
@@ -141,12 +152,16 @@ export default function Members() {
       ])
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    // Style header row width
     ws['!cols'] = [{ wch: 5 }, { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 18 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Daftar Anggota');
     XLSX.writeFile(wb, `daftar-anggota-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+
+  const excelPreviewRows = filteredMembers.map((m, i) => [
+    i + 1, m.name, m.email, m.phone || '-', m.nik || '-', m.type, m.status,
+    m.joinDate ? new Date(m.joinDate).toLocaleDateString('id-ID') : '-'
+  ]) as (string | number)[][];
 
 
   if (loading) return (
@@ -199,10 +214,10 @@ export default function Members() {
             </select>
             <span className="text-xs text-slate-500 dark:text-slate-400">{filteredMembers.length} dari {members.length} anggota</span>
             <div className="flex gap-2 ml-auto">
-              <button onClick={exportMembersExcel} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium">
+              <button onClick={() => { setPreviewMode('excel'); setPreviewOpen(true); }} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium">
                 <Table size={15} /> Excel
               </button>
-              <button onClick={exportMembersPDF} className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium">
+              <button onClick={() => { setPreviewMode('pdf'); setPreviewOpen(true); }} className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium">
                 <FileText size={15} /> PDF
               </button>
             </div>
@@ -354,6 +369,28 @@ export default function Members() {
       </AnimatePresence>
 
       {viewerData && <ImageViewer src={viewerData.src} title={viewerData.title} onClose={() => setViewerData(null)} />}
+
+      <ReportPreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title="Daftar Anggota Koperasi"
+        generatePDF={previewMode === 'pdf' ? generateMembersPDF : undefined}
+        pdfFilename={`daftar-anggota-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO', 'NAMA', 'EMAIL', 'TELEPON', 'NIK', 'TIPE', 'STATUS', 'TGL BERGABUNG'],
+          rows: excelPreviewRows,
+          filename: `daftar-anggota-${new Date().toISOString().split('T')[0]}.xlsx`,
+          onDownload: doMembersExcelDownload,
+        }}
+      />
+
+      <ReportPreviewModal
+        isOpen={memberDetailPreview.open}
+        onClose={() => setMemberDetailPreview({ open: false, member: null })}
+        title={`Detail Anggota — ${memberDetailPreview.member?.name || ''}`}
+        generatePDF={memberDetailPreview.member ? generateMemberDetailPDF : undefined}
+        pdfFilename={`anggota-${(memberDetailPreview.member?.name || 'detail').replace(/\s+/g, '-')}.pdf`}
+      />
     </div>
   );
 }

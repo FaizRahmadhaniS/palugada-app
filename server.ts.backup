@@ -1408,37 +1408,70 @@ app.use('/api', (req, res, next) => {
 
   // --- Member Payments History API ---
   app.get("/api/member_payments/:memberId", async (req, res) => {
+    const sessionUser = (req.session as any).user;
+    if (!sessionUser) return res.status(401).json({ message: 'Unauthorized' });
+
     const { memberId } = req.params;
+
+    // Security: member hanya boleh akses data dirinya sendiri
+    if (sessionUser.role !== 'admin' && sessionUser.id !== memberId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
     
-    // Fetch savings
-    const { data: savings } = await db.from('savings').select('*').eq('member_id', memberId);
+    // Fetch savings (hanya yang confirmed/success, bukan pending)
+    const { data: savings } = await db.from('savings')
+      .select('*')
+      .eq('member_id', memberId)
+      .neq('status', 'pending')
+      .order('date', { ascending: false });
     
-    // Fetch loan repayments (need to join with loans to get member_id, or just fetch all loans for member and then their repayments)
-    const { data: loans } = await db.from('loans').select('id').eq('member_id', memberId);
-    const loanIds = (loans || []).map(l => l.id);
+    // Fetch loan repayments
+    const { data: loans } = await db.from('loans').select('id, amount').eq('member_id', memberId);
+    const loanIds = (loans || []).map((l: any) => l.id);
     
     let repayments: any[] = [];
     if (loanIds.length > 0) {
-      const { data: reps } = await db.from('loan_repayments').select('*').in('loan_id', loanIds);
+      const { data: reps } = await db.from('loan_repayments')
+        .select('*')
+        .in('loan_id', loanIds)
+        .order('payment_date', { ascending: false });
       repayments = reps || [];
     }
 
-    // Combine and format
+    // Deduplication berdasarkan ID untuk mencegah data ganda
+    const seen = new Set<string>();
+    const deduped = (arr: any[]) => arr.filter(item => {
+      const key = item.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Combine and format dengan label yang lebih informatif
     const history = [
-      ...(savings || []).map(s => ({
-        id: s.id,
+      ...deduped(savings || []).map((s: any) => ({
+        id: String(s.id),
         date: s.date,
-        type: s.type,
+        type: s.type || 'Simpanan',
+        description: s.description || '',
         amount: s.amount,
-        status: 'Success'
+        status: s.status || 'Success',
+        category: 'savings'
       })),
-      ...repayments.map(r => ({
-        id: r.id,
-        date: r.payment_date,
-        type: `Pembayaran Pinjaman (${r.loan_id})`,
-        amount: r.amount_paid,
-        status: r.status
-      }))
+      ...deduped(repayments).map((r: any) => {
+        // Tampilkan nomor angsuran jika ada
+        const loanShort = String(r.loan_id).substring(0, 8).toUpperCase();
+        const scheduleNum = r.schedule_id ? ` · Angsuran ke-${r.schedule_number || '?'}` : '';
+        return {
+          id: String(r.id),
+          date: r.payment_date,
+          type: `Pembayaran Pinjaman (${loanShort}...${scheduleNum})`,
+          description: r.notes || '',
+          amount: r.amount_paid,
+          status: r.status || 'completed',
+          category: 'loan_payment'
+        };
+      })
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     res.json(history);
@@ -1882,17 +1915,19 @@ app.use('/api', (req, res, next) => {
   });
 
   // --- NEW FEATURES ENDPOINTS ---
-
+  
   // Loan Payment History
   app.get("/api/loan-payments/:loanId", async (req, res) => {
     const { loanId } = req.params;
     const user = (req.session as any).user;
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    
     try {
       const { data: payments } = await db.from('loan_payments')
         .select('*')
         .eq('loan_id', loanId)
         .order('payment_date', { ascending: false });
+      
       res.json(payments || []);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1902,24 +1937,29 @@ app.use('/api', (req, res, next) => {
   app.post("/api/loan-payments", async (req, res) => {
     const user = (req.session as any).user;
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    
     const { loanId, amount, paymentDate, notes } = req.body;
     try {
       const { data: payment } = await db.from('loan_payments')
         .insert({ loan_id: loanId, amount, payment_date: paymentDate, notes, created_by: user.id })
         .select()
         .single();
+      
       res.json({ success: true, payment });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
   });
 
-  // SHU Distribution (FIXED)
+  // SHU Distribution
   app.get("/api/shu/distribution", async (req, res) => {
     const user = (req.session as any).user;
-    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    // Bug Fix 1: member juga bisa lihat SHU miliknya sendiri
+    if (!user) return res.status(403).json({ message: 'Forbidden' });
+    
     try {
       let query = db.from('shu_distributions').select('*').order('created_at', { ascending: false });
+      // Member hanya bisa lihat data miliknya sendiri
       if (user.role !== 'admin') {
         query = query.eq('member_id', user.id);
       }
@@ -1933,30 +1973,47 @@ app.use('/api', (req, res, next) => {
   app.post("/api/shu/calculate", async (req, res) => {
     const user = (req.session as any).user;
     if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+    
     const { period, totalProfit, distributionRate } = req.body;
+
+    // Validasi input
     if (!period || !totalProfit || Number(totalProfit) <= 0) {
-      return res.status(400).json({ success: false, message: 'Period dan total laba wajib diisi dan lebih dari 0' });
+      return res.status(400).json({ success: false, message: 'Period dan total laba wajib diisi dan harus lebih dari 0' });
     }
+    if (!distributionRate || Number(distributionRate) <= 0 || Number(distributionRate) > 100) {
+      return res.status(400).json({ success: false, message: 'Persentase distribusi harus antara 1-100' });
+    }
+
     try {
-      // Cek duplikat periode
-      const { data: existing } = await db.from('shu_distributions').select('id').eq('period', period).limit(1);
+      // Bug Fix 3: Cek duplikat periode sebelum insert
+      const { data: existing } = await db.from('shu_distributions')
+        .select('id')
+        .eq('period', period)
+        .limit(1);
+      
       if (existing && existing.length > 0) {
-        return res.status(409).json({ success: false, message: `SHU periode ${period} sudah pernah dihitung.` });
+        return res.status(409).json({ 
+          success: false, 
+          message: `SHU untuk periode ${period} sudah pernah dihitung. Hapus data lama terlebih dahulu jika ingin menghitung ulang.` 
+        });
       }
-      // Ambil semua anggota yang punya simpanan (tanpa filter status agar tidak salah)
-      const { data: allMembers } = await db.from('members').select('id, name, total_savings, status');
-      const members = (allMembers || []).filter((m: any) => {
-        const s = String(m.status || '').toLowerCase();
-        const hasActiveStatus = s === 'aktif' || s === 'active' || s === 'approved';
-        return hasActiveStatus && (m.total_savings || 0) > 0;
-      });
-      const eligible = members.length > 0 ? members : (allMembers || []).filter((m: any) => (m.total_savings || 0) > 0);
-      if (!eligible || eligible.length === 0) {
-        return res.status(400).json({ success: false, message: 'Tidak ada anggota dengan simpanan yang dapat menerima SHU' });
+
+      // Bug Fix 4: Hanya ambil member dengan simpanan > 0
+      const { data: members } = await db.from('members')
+        .select('id, name, total_savings')
+        .eq('status', 'active')  // hanya member aktif
+        .gt('total_savings', 0); // Bug Fix 4: skip member tanpa simpanan
+
+      if (!members || members.length === 0) {
+        return res.status(400).json({ success: false, message: 'Tidak ada anggota aktif dengan simpanan yang dapat menerima SHU' });
       }
-      const totalSavings = eligible.reduce((sum: number, m: any) => sum + (m.total_savings || 0), 0);
+
+      const totalSavings = members.reduce((sum: number, m: any) => sum + (m.total_savings || 0), 0);
+      
+      // Bug Fix 2: distributionRate benar-benar dipakai dalam perhitungan
       const profitToDistribute = Number(totalProfit) * (Number(distributionRate) / 100);
-      const distributions = eligible.map((m: any) => ({
+
+      const distributions = members.map((m: any) => ({
         member_id: m.id,
         member_name: m.name,
         period,
@@ -1964,13 +2021,30 @@ app.use('/api', (req, res, next) => {
         distribution_rate: distributionRate,
         created_by: user.id
       }));
+      
       const { data: result, error: insertError } = await db.from('shu_distributions').insert(distributions).select();
       if (insertError) throw insertError;
+
+      // Update total_shu di tabel members
       for (const dist of (result || [])) {
-        const { data: md } = await db.from('members').select('total_shu').eq('id', dist.member_id).single();
-        if (md) await db.from('members').update({ total_shu: (md.total_shu || 0) + dist.share_amount }).eq('id', dist.member_id);
+        await db.from('members')
+          .update({ total_shu: db.raw ? undefined : undefined }) // handled below
+          .eq('id', dist.member_id);
+        // Tambahkan ke total_shu existing
+        const { data: memberData } = await db.from('members').select('total_shu').eq('id', dist.member_id).single();
+        if (memberData) {
+          await db.from('members')
+            .update({ total_shu: (memberData.total_shu || 0) + dist.share_amount })
+            .eq('id', dist.member_id);
+        }
       }
-      res.json({ success: true, distributions: result, summary: { totalMembers: eligible.length, totalDistributed: profitToDistribute, period, distributionRate } });
+
+      res.json({ success: true, distributions: result, summary: {
+        totalMembers: distributions.length,
+        totalDistributed: profitToDistribute,
+        period,
+        distributionRate
+      }});
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -2267,12 +2341,18 @@ app.use('/api', (req, res, next) => {
     }
   });
 
-  // Handle 404 untuk API routes — di paling bawah setelah semua routes
+  // Global Error Handler
+  // Handle 404 for API routes — HARUS di paling bawah setelah semua routes
   app.use("/api/*", (req, res) => {
     res.status(404).json({ error: "Not Found", message: `Route ${req.method} ${req.originalUrl} not found` });
   });
 
-  // Global Error Handler
+
+  // Handle 404 untuk semua API route yang tidak dikenali — HARUS di paling bawah
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({ error: "Not Found", message: `Route ${req.method} ${req.originalUrl} not found` });
+  });
+
   app.use((err: any, req: any, res: any, next: any) => {
     console.error("Express Error:", err);
     if (req.path.startsWith('/api/')) {

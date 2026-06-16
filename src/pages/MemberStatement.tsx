@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Download, FileText, Calendar, DollarSign, TrendingUp, Search } from 'lucide-react';
 import jsPDF from 'jspdf';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 import autoTable from 'jspdf-autotable';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 
@@ -11,6 +12,7 @@ const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString('id
 export default function MemberStatement({ user }: { user: any }) {
   const [statement, setStatement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [stmtPreviewOpen, setStmtPreviewOpen] = useState(false);
   const [period, setPeriod] = useState('all');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -64,8 +66,8 @@ export default function MemberStatement({ user }: { user: any }) {
     }
   };
 
-  const downloadPDF = async () => {
-    if (!statement) return;
+  const downloadPDF = async (): Promise<jsPDF> => {
+    if (!statement) return new jsPDF();
     const doc = new jsPDF();
     const color: [number, number, number] = [16, 185, 129];
 
@@ -159,7 +161,7 @@ export default function MemberStatement({ user }: { user: any }) {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 8);
     addPDFFooter(doc, color);
-    doc.save(`laporan-rekening-${user.name}-${Date.now()}.pdf`);
+    return doc;
   };
 
   if (loading) {
@@ -179,7 +181,7 @@ export default function MemberStatement({ user }: { user: any }) {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Ringkasan akun dan riwayat transaksi Anda</p>
         </div>
         <button
-          onClick={downloadPDF}
+          onClick={() => setStmtPreviewOpen(true)}
           className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors"
         >
           <Download size={20} />
@@ -337,6 +339,26 @@ export default function MemberStatement({ user }: { user: any }) {
           </div>
         </motion.div>
       )}
+
+      <ReportPreviewModal
+        isOpen={stmtPreviewOpen}
+        onClose={() => setStmtPreviewOpen(false)}
+        title="Laporan Rekening Anggota"
+        generatePDF={downloadPDF}
+        pdfFilename={`laporan-rekening-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','TANGGAL','JENIS TRANSAKSI','STATUS','JUMLAH'],
+          rows: filteredTxs.map((t: any, i: number) => [
+            i+1,
+            t.date ? new Date(t.date).toLocaleDateString('id-ID') : '-',
+            t.type||t.description||'-',
+            t.status||'-',
+            `Rp ${(t.amount||0).toLocaleString('id-ID')}`
+          ]) as (string|number)[][],
+          filename: `laporan-rekening-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </motion.div>
   );
 }

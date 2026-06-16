@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Search, Printer, FileText, Calendar } from 'lucide-react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 import jsPDF from 'jspdf';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
-import { addPDFHeader, addPDFFooter, fmt } from '../utils/pdfHelper';
 
+const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 
 export default function MemberReports({ user }: { user: any }) {
@@ -11,6 +13,7 @@ export default function MemberReports({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -20,139 +23,89 @@ export default function MemberReports({ user }: { user: any }) {
     const loadHistory = async () => {
       try {
         const res = await fetch(`/api/member_payments/${user.id}`, { credentials: 'include' });
-        if (res.ok) {
-          const ct = res.headers.get("content-type");
-          if (ct && ct.includes("application/json")) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) { setHistory(data); setLoading(false); return; }
-          }
+
+        if (res.status === 401 || res.status === 403) {
+          setError('Sesi habis. Silakan login ulang.');
+          setLoading(false);
+          return;
         }
-        const savRes = await fetch('/api/savings', { credentials: 'include' });
-        if (savRes.ok) {
-          const savData = await savRes.json();
-          if (Array.isArray(savData)) {
-            setHistory(savData.map((t: any) => ({
-              id: t.id, date: t.date || t.createdDate,
-              type: t.description || t.type || 'Simpanan',
-              amount: t.amount, status: t.status || 'Success'
-            })));
-          }
+
+        if (!res.ok) {
+          setError(`Gagal memuat riwayat (${res.status})`);
+          setLoading(false);
+          return;
         }
-      } catch (err: any) { setError(err.message || 'Gagal memuat laporan'); }
-      finally { setLoading(false); }
+
+        const ct = res.headers.get('content-type');
+        if (!ct || !ct.includes('application/json')) {
+          setError('Format data tidak valid dari server');
+          setLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setHistory(data);
+        } else {
+          setError('Data tidak valid');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Gagal memuat laporan. Periksa koneksi Anda.');
+      } finally {
+        setLoading(false);
+      }
     };
     loadHistory();
   }, [user?.id]);
 
-  const exportPersonalPDF = async () => {
+  const [mrPreviewOpen, setMrPreviewOpen] = useState(false);
+  const exportPersonalPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
-    const color: [number, number, number] = [16, 185, 129];
     const startY = await addPDFHeader(doc, {
-      reportId: `MEM-${user.id.substring(0, 6)}-${Date.now()}`,
+      reportId: `REP-MEM-${Date.now()}`,
       title: 'Riwayat Transaksi Pribadi',
-      subtitle: `Anggota: ${user.name} | ${user.email}`,
-      accentColor: color,
+      subtitle: `Anggota: ${user.name}`,
       printedBy: user.name
     });
-
-    const totalIncome = history.filter(h => !['Withdrawal','Penarikan'].includes(h.type)).reduce((s, h) => s + (h.amount || 0), 0);
-    const totalOut = history.filter(h => ['Withdrawal','Penarikan'].includes(h.type)).reduce((s, h) => s + (h.amount || 0), 0);
-
     autoTable(doc, {
       startY,
-      head: [['NO', 'TANGGAL', 'JENIS TRANSAKSI', 'STATUS', 'JUMLAH (Rp)']],
-      body: history.map((h, i) => [i + 1, fmtDate(h.date), h.type || 'Simpanan', h.status || 'success', fmt(h.amount)]),
-      foot: [
-        ['', '', 'TOTAL MASUK', '', fmt(totalIncome)],
-        ['', '', 'TOTAL KELUAR', '', fmt(totalOut)],
-      ],
-      headStyles: { fillColor: color, textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
-      footStyles: { fillColor: [15, 23, 42] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontStyle: 'bold', fontSize: 8 },
+      head: [['NO', 'TANGGAL', 'JENIS TRANSAKSI', 'STATUS', 'JUMLAH']],
+      body: history.map((h, i) => [i + 1, fmtDate(h.date), h.type, h.status, fmt(h.amount)]),
+      headStyles: { fillColor: [16, 185, 129] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
       bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
       alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 12 },
         1: { halign: 'center', cellWidth: 28 },
         3: { halign: 'center', cellWidth: 24 },
-        4: { halign: 'right', fontStyle: 'bold', cellWidth: 35 }
+        4: { halign: 'right', cellWidth: 35 }
       },
       tableLineColor: [226, 232, 240] as [number,number,number],
       tableLineWidth: 0.3,
       margin: { left: 14, right: 14 }
     });
-
-    addPDFFooter(doc, color);
-    doc.save(`laporan-saya-${Date.now()}.pdf`);
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc);
+    return doc;
   };
 
   const handlePrint = (t: any) => {
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Bukti Transaksi</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; display: flex; justify-content: center; padding: 30px 16px; }
-      .page { background: #fff; width: 380px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.1); }
-      .header-stripe { background: #0f172a; padding: 8px 16px; text-align: center; }
-      .header-stripe p { color: rgba(255,255,255,.7); font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-      .header-main { background: linear-gradient(135deg, #10b981, #059669); padding: 20px 20px 16px; display: flex; align-items: center; gap: 14px; }
-      .logo-box { background: #fff; border-radius: 8px; padding: 8px 10px; text-align: center; flex-shrink: 0; }
-      .logo-box .univ { font-size: 6px; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: .03em; }
-      .logo-box .upb { font-size: 16px; font-weight: 900; color: #0f172a; line-height: 1; }
-      .logo-box .pelita { font-size: 5.5px; color: #64748b; font-weight: 700; text-transform: uppercase; }
-      .app-info h1 { color: #fff; font-size: 20px; font-weight: 900; letter-spacing: -.02em; }
-      .app-info p { color: rgba(255,255,255,.75); font-size: 10px; margin-top: 2px; }
-      .title-bar { background: #0f172a; padding: 10px 20px; text-align: center; }
-      .title-bar h2 { color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-      .body { padding: 20px; }
-      .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; align-items: flex-start; gap: 12px; }
-      .row:last-child { border-bottom: none; }
-      .row .label { font-size: 11px; color: #64748b; font-weight: 500; }
-      .row .value { font-size: 12px; color: #0f172a; font-weight: 700; text-align: right; max-width: 200px; word-break: break-all; }
-      .total-row { background: #f0fdf4; border-radius: 8px; padding: 14px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
-      .total-row .label { font-size: 12px; color: #059669; font-weight: 700; text-transform: uppercase; }
-      .total-row .value { font-size: 20px; color: #059669; font-weight: 900; }
-      .status-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; background: #f0fdf4; color: #059669; border: 1px solid #86efac; text-transform: uppercase; }
-      .footer { background: #0f172a; padding: 12px 20px; text-align: center; }
-      .footer p { color: rgba(255,255,255,.5); font-size: 8.5px; line-height: 1.6; }
-      .footer .brand { color: #10b981; font-weight: 700; }
-      @media print { body { padding: 0; background: #fff; } .page { box-shadow: none; } }
-    </style></head>
-    <body><div class="page">
-      <div class="header-stripe">
-        <p>Universitas Pelita Bangsa — Kelompok 7 Pemrograman Web 2</p>
-      </div>
-      <div class="header-main">
-        <div class="logo-box">
-          <div class="univ">Univ.</div>
-          <div class="upb">UPB</div>
-          <div class="pelita">Pelita Bangsa</div>
-        </div>
-        <div class="app-info">
-          <h1>PALUGADA</h1>
-          <p>Sistem Manajemen Koperasi Digital</p>
-        </div>
-      </div>
-      <div class="title-bar"><h2>Bukti Transaksi</h2></div>
-      <div class="body">
-        <div class="row"><span class="label">No. Transaksi</span><span class="value">${t.id ? t.id.substring(0, 12).toUpperCase() : 'TXN-' + Date.now()}</span></div>
-        <div class="row"><span class="label">Tanggal</span><span class="value">${fmtDate(t.date)}</span></div>
-        <div class="row"><span class="label">Nama Anggota</span><span class="value">${user.name}</span></div>
-        <div class="row"><span class="label">Jenis Transaksi</span><span class="value">${t.type || 'Simpanan'}</span></div>
-        <div class="row"><span class="label">Status</span><span class="value"><span class="status-badge">${t.status || 'success'}</span></span></div>
-        <div class="total-row">
-          <span class="label">Total</span>
-          <span class="value">${fmt(t.amount)}</span>
-        </div>
-      </div>
-      <div class="footer">
-        <p>Dokumen ini diterbitkan secara resmi oleh<br/>
-        <span class="brand">Sistem PALUGADA</span> — Koperasi Digital Universitas Pelita Bangsa<br/>
-        Dicetak: ${new Date().toLocaleString('id-ID')}</p>
-      </div>
-    </div>
-    <script>window.onload=()=>{ setTimeout(()=>window.print(), 400); }</script>
-    </body></html>`);
+    w.document.write(`<html><head><title>Bukti</title><style>body{font-family:monospace;padding:40px}
+    .box{border:1px dashed #ccc;padding:30px;max-width:400px;margin:0 auto}
+    .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+    .total{font-weight:bold;font-size:18px;padding-top:12px}
+    </style></head><body><div class="box">
+    <h2 style="text-align:center">PALUGADA COOP</h2>
+    <p style="text-align:center;color:#666">Koperasi Simpan Pinjam</p>
+    <div class="row"><span>Tanggal</span><span>${fmtDate(t.date)}</span></div>
+    <div class="row"><span>Anggota</span><span>${user.name}</span></div>
+    <div class="row"><span>Jenis</span><span>${t.type}</span></div>
+    <div class="row"><span>Status</span><span>${t.status}</span></div>
+    <div class="row total"><span>TOTAL</span><span>${fmt(t.amount)}</span></div>
+    </div><script>window.onload=()=>window.print()</script></body></html>`);
     w.document.close();
   };
 
@@ -182,13 +135,13 @@ export default function MemberReports({ user }: { user: any }) {
           <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Riwayat & Laporan</h1>
           <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Riwayat transaksi dan bukti pembayaran Anda</p>
         </div>
-        <button onClick={exportPersonalPDF}
+        <button onClick={() => setMrPreviewOpen(true)}
           style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#059669',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
           <Download size={16}/> Unduh PDF
         </button>
       </div>
 
-      {/* Filter bar */}
+      {/* Search + Filter */}
       <div style={{ display:'flex',flexWrap:'wrap',gap:10,marginBottom:16,alignItems:'center' }}>
         <div style={{ position:'relative' }}>
           <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
@@ -297,6 +250,26 @@ export default function MemberReports({ user }: { user: any }) {
           </div>
         </>
       )}
+
+      <ReportPreviewModal
+        isOpen={mrPreviewOpen}
+        onClose={() => setMrPreviewOpen(false)}
+        title="Laporan Transaksi Pribadi"
+        generatePDF={exportPersonalPDF}
+        pdfFilename={`laporan-saya-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','TANGGAL','JENIS TRANSAKSI','STATUS','JUMLAH'],
+          rows: filtered.map((h: any, i: number) => [
+            i+1,
+            h.date ? new Date(h.date).toLocaleDateString('id-ID') : '-',
+            h.type||'-',
+            h.status||'-',
+            `Rp ${(h.amount||0).toLocaleString('id-ID')}`
+          ]) as (string|number)[][],
+          filename: `laporan-saya-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </div>
   );
 }

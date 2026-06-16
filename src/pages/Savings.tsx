@@ -7,6 +7,7 @@ import { cn } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { addPDFHeader, addPDFFooter, addSignatureArea, fmt as pdfFmt } from '../utils/pdfHelper';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 const LS_KEY = 'palugada_pending_payments';
@@ -360,7 +361,7 @@ export default function Savings({ user }: { user?: any }) {
 
   const toggleExpand = (id: string) => setExpandedMember(expandedMember === id ? null : id);
 
-  const exportSavingsPDF = async () => {
+  const generateSavingsPDF = async (): Promise<jsPDF> => {
     const doc = new jsPDF();
     const reportId = `SAV-${Date.now()}`;
     const filterInfo = [filterType && `Jenis: ${filterType}`, filterDateFrom && `Dari: ${filterDateFrom}`, filterDateTo && `s/d: ${filterDateTo}`].filter(Boolean).join(' · ');
@@ -387,8 +388,10 @@ export default function Savings({ user }: { user?: any }) {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 10);
     addPDFFooter(doc);
-    doc.save(`laporan-simpanan-${Date.now()}.pdf`);
+    return doc;
   };
+
+  const [savPreviewOpen, setSavPreviewOpen] = useState(false);
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 max-w-6xl mx-auto">
@@ -408,7 +411,7 @@ export default function Savings({ user }: { user?: any }) {
         </div>
         <div className="flex gap-2">
           {!isAdmin && <button onClick={() => setActiveTab('history')} className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", activeTab === 'history' ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}><History size={16} /> {t('common.history') || 'Riwayat'}</button>}
-          <button onClick={exportSavingsPDF} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium"><FileText size={18} /> {t('common.download')} PDF</button>
+          <button onClick={() => setSavPreviewOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium"><FileText size={18} /> {t('common.download')} PDF</button>
           {!isAdmin && <button onClick={() => setActiveTab('deposit')} className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", activeTab === 'deposit' ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}><Plus size={16} /> Setor / Bayar</button>}
         </div>
       </div>
@@ -693,6 +696,22 @@ export default function Savings({ user }: { user?: any }) {
           </div>
         </>
       )}
+
+      <ReportPreviewModal
+        isOpen={savPreviewOpen}
+        onClose={() => setSavPreviewOpen(false)}
+        title={isAdmin ? 'Laporan Simpanan Semua Anggota' : 'Laporan Simpanan Pribadi'}
+        generatePDF={generateSavingsPDF}
+        pdfFilename={`laporan-simpanan-${Date.now()}.pdf`}
+        excelData={{
+          headers: isAdmin ? ['NO','ANGGOTA','TOTAL SIMPANAN','JML TRANSAKSI'] : ['NO','TANGGAL','JENIS','JUMLAH','KETERANGAN'],
+          rows: isAdmin
+            ? (groupedSavings as any[]).map((g, i) => [i+1, g.memberName, `Rp ${g.totalAmount.toLocaleString('id-ID')}`, g.transactions.length]) as (string|number)[][]
+            : filteredSavings.filter(s => s.status !== 'pending').map((s, i) => [i+1, s.date ? new Date(s.date).toLocaleDateString('id-ID') : '-', s.type||'-', `Rp ${(s.amount||0).toLocaleString('id-ID')}`, s.description||'-']) as (string|number)[][],
+          filename: `laporan-simpanan-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </motion.div>
   );
 }

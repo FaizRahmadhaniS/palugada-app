@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 import { TrendingUp, DollarSign, Calendar, Users, Plus, X, FileText, BookOpen, Award, Info, Printer, ChevronDown } from 'lucide-react';
 
 const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
@@ -10,24 +11,38 @@ export default function SHUDistribution({ user }: { user: any }) {
   const [showCalc, setShowCalc] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
+  const [toastType, setToastType] = useState<'success'|'error'>('success');
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'formal' | 'nonformal'>('formal');
   const [calc, setCalc] = useState({ period: new Date().toISOString().substring(0, 7), totalProfit: '', distributionRate: 100 });
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
+  const showToast = (msg: string, type: 'success'|'error' = 'success') => {
+    setToast(msg); setToastType(type); setTimeout(() => setToast(''), 4000);
+  };
 
   const fetchData = () => {
     setLoading(true);
+    setFetchError(null);
     fetch('/api/shu/distribution', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : [])
+      .then(async r => {
+        if (r.status === 403) { setFetchError('Akses ditolak.'); return []; }
+        if (!r.ok) { setFetchError('Gagal memuat data SHU.'); return []; }
+        return r.json();
+      })
       .then(d => setDistributions(Array.isArray(d) ? d : []))
-      .catch(() => setDistributions([]))
+      .catch(() => { setFetchError('Koneksi gagal. Periksa jaringan Anda.'); setDistributions([]); })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const handleCalculate = async () => {
-    if (!calc.totalProfit || Number(calc.totalProfit) <= 0) { showToast('Total laba harus lebih dari 0'); return; }
+    if (!calc.totalProfit || Number(calc.totalProfit) <= 0) {
+      showToast('Total laba harus lebih dari 0', 'error'); return;
+    }
+    if (!calc.period) {
+      showToast('Periode harus dipilih', 'error'); return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/shu/calculate', {
@@ -36,9 +51,25 @@ export default function SHUDistribution({ user }: { user: any }) {
         body: JSON.stringify({ period: calc.period, totalProfit: Number(calc.totalProfit), distributionRate: calc.distributionRate })
       });
       const data = await res.json();
-      if (data.success) { showToast('SHU berhasil dihitung!'); setShowCalc(false); fetchData(); }
-      else showToast('Gagal: ' + (data.message || 'Error'));
-    } catch { showToast('Gagal menghitung SHU'); }
+      if (res.status === 409) {
+        // Bug Fix 3: duplikat periode
+        showToast(data.message || 'Periode ini sudah pernah dihitung!', 'error');
+      } else if (res.status === 400) {
+        showToast(data.message || 'Input tidak valid', 'error');
+      } else if (data.success) {
+        const summary = data.summary;
+        showToast(
+          `SHU berhasil! ${summary?.totalMembers || 0} anggota · Total Rp ${(summary?.totalDistributed || 0).toLocaleString('id-ID')}`,
+          'success'
+        );
+        setShowCalc(false);
+        fetchData();
+      } else {
+        showToast('Gagal: ' + (data.message || 'Error tidak diketahui'), 'error');
+      }
+    } catch {
+      showToast('Gagal terhubung ke server', 'error');
+    }
     setSubmitting(false);
   };
 
@@ -51,49 +82,35 @@ export default function SHUDistribution({ user }: { user: any }) {
   const totalAll = distributions.reduce((s, d) => s + (d.share_amount || 0), 0);
   const maxShare = distributions.length > 0 ? Math.max(...distributions.map(d => d.share_amount || 0)) : 0;
 
-  const handlePrint = () => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    const rows = distributions.map((d, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${d.member_name || 'Anggota'}</td>
-        <td>${d.period || '-'}</td>
-        <td>${d.distribution_rate || 0}%</td>
-        <td style="font-weight:700;color:#059669">${fmt(d.share_amount)}</td>
-      </tr>`).join('');
-    w.document.write(`<html><head><title>Laporan SHU Formal</title>
-      <style>
-        body{font-family:Georgia,serif;padding:40px;color:#111}
-        h1{font-size:22px;margin-bottom:4px}
-        .sub{color:#666;font-size:13px;margin-bottom:20px}
-        .meta{border:1px solid #ddd;padding:12px 16px;border-radius:6px;margin-bottom:20px;font-size:13px;background:#f9f9f9}
-        .meta span{font-weight:700}
-        table{width:100%;border-collapse:collapse;font-size:13px}
-        th{background:#065f46;color:#fff;padding:10px 12px;text-align:left}
-        td{padding:9px 12px;border-bottom:1px solid #eee}
-        tr:nth-child(even) td{background:#f9fafb}
-        .total{font-weight:700;font-size:15px;color:#059669}
-        footer{margin-top:30px;font-size:11px;color:#999;text-align:center}
-        @media print{button{display:none}}
-      </style></head><body>
-      <h1>Laporan Distribusi SHU — Koperasi Palugada</h1>
-      <p class="sub">Sisa Hasil Usaha — Dokumen Resmi berdasarkan UU No. 25 Tahun 1992</p>
-      <div class="meta">
-        Total Terdistribusi: <span>${fmt(totalAll)}</span> &nbsp;·&nbsp;
-        Jumlah Anggota: <span>${distributions.length} orang</span> &nbsp;·&nbsp;
-        Periode: <span>${Object.keys(grouped).join(', ') || '-'}</span> &nbsp;·&nbsp;
-        Dicetak: <span>${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-      </div>
-      <table>
-        <thead><tr><th>No</th><th>Nama Anggota</th><th>Periode</th><th>% Distribusi</th><th>Nominal SHU</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="4" style="font-weight:700;padding:10px 12px">TOTAL</td><td class="total" style="padding:10px 12px">${fmt(totalAll)}</td></tr></tfoot>
-      </table>
-      <footer>Dokumen ini merupakan laporan resmi koperasi · Palugada Koperasi Digital</footer>
-      <script>window.onload=()=>window.print()</script>
-      </body></html>`);
-    w.document.close();
+  const [shuPreviewOpen, setShuPreviewOpen] = useState(false);
+  const generateShuPDF = async (): Promise<import('jspdf').default> => {
+    const { default: jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const { addPDFHeader, addPDFFooter, addSignatureArea } = await import('../utils/pdfHelper');
+    const doc = new jsPDF();
+    const color: [number, number, number] = [5, 150, 105];
+    const totalAll = distributions.reduce((s: number, d: any) => s + (d.share_amount || 0), 0);
+    const startY = await addPDFHeader(doc, {
+      reportId: `SHU-${Date.now()}`,
+      title: 'Laporan Distribusi SHU',
+      subtitle: `Total: ${fmt(totalAll)} · ${distributions.length} anggota · Periode: ${Object.keys(grouped).join(', ') || '-'}`,
+      accentColor: color
+    });
+    autoTable(doc, {
+      startY,
+      head: [['NO', 'NAMA ANGGOTA', 'PERIODE', '% DISTRIBUSI', 'NOMINAL SHU']],
+      body: distributions.map((d: any, i: number) => [i + 1, d.member_name || 'Anggota', d.period || '-', `${d.distribution_rate || 0}%`, fmt(d.share_amount)]),
+      headStyles: { fillColor: color, textColor: [255,255,255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15,23,42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240,253,244] as [number,number,number] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 10 }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'right' } },
+      tableLineColor: [226,232,240] as [number,number,number], tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+    const finalY = (doc as any).lastAutoTable.finalY || 200;
+    if (finalY < 240) addSignatureArea(doc, finalY + 8);
+    addPDFFooter(doc, color);
+    return doc;
   };
 
   const TAB = ({ id, label, icon }: { id: 'formal' | 'nonformal', label: string, icon: any }) => (
@@ -128,13 +145,26 @@ export default function SHUDistribution({ user }: { user: any }) {
         }
       `}</style>
 
-      {toast && <div style={{ position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',zIndex:999,background:'#059669',color:'#fff',padding:'10px 20px',borderRadius:10,fontSize:13,fontWeight:600,boxShadow:'0 4px 16px rgba(0,0,0,.2)',maxWidth:'85vw',textAlign:'center' }}>{toast}</div>}
+      {toast && <div style={{ position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:toastType==='error'?'#dc2626':'#059669',color:'#fff',padding:'12px 24px',borderRadius:12,fontSize:13,fontWeight:600,boxShadow:'0 4px 20px rgba(0,0,0,.25)',maxWidth:'90vw',textAlign:'center',display:'flex',alignItems:'center',gap:8 }}><span>{toastType==='error'?'✕':'✓'}</span>{toast}</div>}
 
       {/* Header */}
       <div style={{ background:'linear-gradient(135deg,#059669,#0d9488)',borderRadius:16,padding:'24px 28px',marginBottom:24 }}>
         <h1 style={{ fontSize:'clamp(20px,3vw,28px)',fontWeight:800,color:'#fff',margin:0,marginBottom:4 }}>Distribusi SHU</h1>
         <p style={{ fontSize:14,color:'rgba(255,255,255,.8)',margin:0 }}>Sisa Hasil Usaha — pembagian profit koperasi kepada anggota</p>
       </div>
+
+      {/* Fetch Error */}
+      {fetchError && (
+        <div style={{ background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:12,padding:'14px 20px',marginBottom:16,display:'flex',alignItems:'center',gap:10 }}>
+          <span style={{ fontSize:18 }}>⚠</span>
+          <div>
+            <p style={{ fontSize:13,fontWeight:700,color:'#dc2626',margin:0 }}>{fetchError}</p>
+            <button onClick={fetchData} style={{ fontSize:12,color:'#dc2626',textDecoration:'underline',background:'none',border:'none',cursor:'pointer',padding:0,marginTop:4,fontFamily:'inherit' }}>
+              Coba muat ulang
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="shu-stats" style={{ marginBottom: 20 }}>
@@ -188,7 +218,7 @@ export default function SHUDistribution({ user }: { user: any }) {
               </div>
               <div style={{ display:'flex',gap:8 }}>
                 <button onClick={handleCalculate} disabled={submitting}
-                  style={{ padding:'11px 24px',background:'#059669',color:'#fff',border:'none',borderRadius:9,fontSize:14,fontWeight:700,cursor:submitting?'not-allowed':'pointer',opacity:submitting?.7:1 }}>
+                  style={{ padding:'11px 24px',background:'#059669',color:'#fff',border:'none',borderRadius:9,fontSize:14,fontWeight:700,cursor:submitting?'not-allowed':'pointer',opacity:submitting?0.7:1 }}>
                   {submitting?'Menghitung...':'Hitung & Simpan'}
                 </button>
                 <button onClick={() => setShowCalc(false)}
@@ -214,7 +244,7 @@ export default function SHUDistribution({ user }: { user: any }) {
 
           {/* Print button */}
           <div style={{ display:'flex',justifyContent:'flex-end',marginBottom:14 }}>
-            <button onClick={handlePrint}
+            <button onClick={() => setShuPreviewOpen(true)}
               style={{ display:'flex',alignItems:'center',gap:7,padding:'10px 18px',background:'#0f1c2e',color:'#e8c97a',border:'1.5px solid rgba(201,168,76,.3)',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer' }}>
               <Printer size={15}/> Cetak Laporan Resmi
             </button>
@@ -252,7 +282,7 @@ export default function SHUDistribution({ user }: { user: any }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(grouped).map(([period, dists]) =>
+                      {Object.entries(grouped as Record<string, any[]>).map(([period, dists]) =>
                         dists.map((d, i) => (
                           <tr key={`${period}-${i}`} style={{ borderBottom:'1px solid #f9fafb' }}
                             onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
@@ -333,7 +363,7 @@ export default function SHUDistribution({ user }: { user: any }) {
             </div>
           ) : (
             <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
-              {Object.entries(grouped).map(([period, dists]) => {
+              {Object.entries(grouped as Record<string, any[]>).map(([period, dists]) => {
                 const pTotal = dists.reduce((s, d) => s + (d.share_amount || 0), 0);
                 return (
                   <div key={period} style={{ background:'#fff',borderRadius:16,border:'1.5px solid #f3f4f6',overflow:'hidden',boxShadow:'0 2px 10px rgba(0,0,0,.06)' }}>
@@ -405,6 +435,20 @@ export default function SHUDistribution({ user }: { user: any }) {
           )}
         </div>
       )}
+
+      <ReportPreviewModal
+        isOpen={shuPreviewOpen}
+        onClose={() => setShuPreviewOpen(false)}
+        title="Laporan Distribusi SHU"
+        generatePDF={generateShuPDF}
+        pdfFilename={`distribusi-shu-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','NAMA ANGGOTA','PERIODE','% DISTRIBUSI','NOMINAL SHU'],
+          rows: distributions.map((d, i) => [i+1, d.member_name||'-', d.period||'-', `${d.distribution_rate||0}%`, `Rp ${(d.share_amount||0).toLocaleString('id-ID')}`]) as (string|number)[][],
+          filename: `distribusi-shu-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </div>
   );
 }

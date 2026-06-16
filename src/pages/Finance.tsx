@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 
 export default function Finance() {
   const [finances, setFinances] = useState<any[]>([]);
@@ -13,6 +14,8 @@ export default function Finance() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'pdf' | 'excel'>('pdf');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -102,7 +105,7 @@ export default function Finance() {
     }
   };
 
-  const exportFinanceExcel = () => {
+  const doExcelDownload = () => {
     const wsData = [
       ['NO', 'TANGGAL', 'TIPE', 'KATEGORI', 'DESKRIPSI', 'PEMASUKAN', 'PENGELUARAN'],
       ...filteredFinances.map((f, i) => {
@@ -122,7 +125,7 @@ export default function Finance() {
     XLSX.writeFile(wb, `laporan-keuangan-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const exportFinancePDF = async () => {
+  const generateFinancePDF = async (): Promise<jsPDF> => {
     const doc = new jsPDF();
     const reportId = `FIN-RPT-${Date.now()}`;
     const startY = await addPDFHeader(doc, {
@@ -163,8 +166,15 @@ export default function Finance() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 8);
     addPDFFooter(doc);
-    doc.save(`laporan-keuangan-${Date.now()}.pdf`);
+    return doc;
   };
+
+  const excelPreviewRows = filteredFinances.map((f, i) => {
+    const d = f.date ? new Date(f.date).toLocaleDateString('id-ID') : '-';
+    return [i + 1, d, f.type, f.category, (f.description || '').replace(/\[PAY-\d+\]/g, '').trim().slice(0, 40),
+      f.type === 'Income' ? `Rp ${(f.amount||0).toLocaleString('id-ID')}` : '-',
+      f.type === 'Expense' ? `Rp ${(f.amount||0).toLocaleString('id-ID')}` : '-'];
+  }) as (string | number)[][];
 
   return (
     <div className="space-y-6">
@@ -179,10 +189,10 @@ export default function Finance() {
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl transition-colors text-sm font-medium">
             <Plus size={18} /> Catat Transaksi
           </button>
-          <button onClick={exportFinanceExcel} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
+          <button onClick={() => { setPreviewMode('excel'); setPreviewOpen(true); }} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
             <Table size={18} /> Excel
           </button>
-          <button onClick={exportFinancePDF} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
+          <button onClick={() => { setPreviewMode('pdf'); setPreviewOpen(true); }} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-medium">
             <FileText size={18} /> PDF
           </button>
         </div>
@@ -504,6 +514,20 @@ export default function Finance() {
           </motion.div>
         </div>
       )}
+
+      <ReportPreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title="Laporan Keuangan Operasional"
+        generatePDF={previewMode === 'pdf' ? generateFinancePDF : undefined}
+        pdfFilename={`laporan-keuangan-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO', 'TANGGAL', 'TIPE', 'KATEGORI', 'DESKRIPSI', 'PEMASUKAN', 'PENGELUARAN'],
+          rows: excelPreviewRows,
+          filename: `laporan-keuangan-${new Date().toISOString().split('T')[0]}.xlsx`,
+          onDownload: doExcelDownload,
+        }}
+      />
     </div>
   );
 }

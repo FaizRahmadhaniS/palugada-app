@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Search, Filter, Download, RotateCcw } from 'lucide-react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { addPDFHeader, addPDFFooter } from '../utils/pdfHelper';
 
 interface FilterState {
   type: 'members' | 'loans' | 'savings';
@@ -27,6 +31,39 @@ export default function AdvancedFiltering({ user }: { user: any }) {
 
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [afPreviewOpen, setAfPreviewOpen] = useState(false);
+
+  const generateFilterPDF = async (): Promise<jsPDF> => {
+    const doc = new jsPDF();
+    const typeLabel = filters.type === 'members' ? 'Anggota' : filters.type === 'loans' ? 'Pinjaman' : 'Simpanan';
+    const startY = await addPDFHeader(doc, {
+      reportId: `FILTER-${Date.now()}`,
+      title: `Hasil Filter Lanjutan — ${typeLabel}`,
+      subtitle: `Total hasil: ${results.length} data · Dicetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    });
+    const heads =
+      filters.type === 'members'  ? [['NO','NAMA','EMAIL','STATUS','TIPE']] :
+      filters.type === 'loans'    ? [['NO','ANGGOTA','JUMLAH','STATUS','TUJUAN']] :
+                                    [['NO','ANGGOTA','JUMLAH','STATUS','JENIS']];
+    const body = results.map((item, i) => {
+      if (filters.type === 'members')
+        return [i+1, item.name||'-', item.email||'-', item.status||'-', item.type||'-'];
+      if (filters.type === 'loans')
+        return [i+1, item.member_name||'-', item.amount ? `Rp ${item.amount.toLocaleString('id-ID')}` : '-', item.status||'-', item.purpose||'-'];
+      return [i+1, item.member_name||'-', item.amount ? `Rp ${item.amount.toLocaleString('id-ID')}` : '-', item.status||'-', item.type||'-'];
+    });
+    autoTable(doc, {
+      startY, head: heads, body,
+      headStyles: { fillColor: [99,102,241] as [number,number,number], textColor: [255,255,255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5 },
+      bodyStyles: { fontSize: 8, cellPadding: 2, textColor: [15,23,42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240,240,255] as [number,number,number] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 10 } },
+      tableLineColor: [226,232,240] as [number,number,number], tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 }
+    });
+    addPDFFooter(doc);
+    return doc;
+  };
 
   useEffect(() => {
     applyFilters();
@@ -277,7 +314,7 @@ export default function AdvancedFiltering({ user }: { user: any }) {
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">
             Hasil ({loading ? 'Memuat...' : results.length})
           </h3>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-semibold transition-all">
+          <button onClick={() => setAfPreviewOpen(true)} disabled={results.length === 0} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded text-sm font-semibold transition-all">
             <Download size={16} />
             Export
           </button>
@@ -336,6 +373,20 @@ export default function AdvancedFiltering({ user }: { user: any }) {
           </table>
         )}
       </motion.div>
+
+      <ReportPreviewModal
+        isOpen={afPreviewOpen}
+        onClose={() => setAfPreviewOpen(false)}
+        title={`Hasil Filter — ${filters.type === 'members' ? 'Anggota' : filters.type === 'loans' ? 'Pinjaman' : 'Simpanan'}`}
+        generatePDF={generateFilterPDF}
+        pdfFilename={`filter-lanjutan-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','NAMA / ANGGOTA','DETAIL 1','DETAIL 2','STATUS'],
+          rows: results.map((item, i) => [i+1, item.name||item.member_name||'-', item.email||item.amount ? `Rp ${(item.amount||0).toLocaleString('id-ID')}` : '-', item.type||item.category||'-', item.status||'-']) as (string|number)[][],
+          filename: `filter-lanjutan-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </div>
   );
 }

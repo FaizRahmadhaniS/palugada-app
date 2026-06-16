@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useDialog } from '../components/Dialog';
 import { motion, AnimatePresence } from 'motion/react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
+import JsBarcode from 'jsbarcode';
 import { 
   ArrowDownRight, 
   Clock, 
@@ -165,7 +167,8 @@ export default function Withdrawals({ user }: { user?: any }) {
 
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
-  const exportWithdrawalsPDF = async () => {
+  const [wdPreviewOpen, setWdPreviewOpen] = useState(false);
+  const generateWithdrawalsPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const reportId = `WD-${Date.now()}`;
     const color: [number, number, number] = [16, 185, 129];
@@ -209,7 +212,7 @@ export default function Withdrawals({ user }: { user?: any }) {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 8);
     addPDFFooter(doc, color);
-    doc.save(`laporan-penarikan-${Date.now()}.pdf`);
+    return doc;
   };
 
   return (
@@ -226,7 +229,7 @@ export default function Withdrawals({ user }: { user?: any }) {
         <div className="flex gap-2">
           {isAdmin && (
             <button 
-              onClick={exportWithdrawalsPDF}
+              onClick={() => setWdPreviewOpen(true)}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-2xl font-bold hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 dark:shadow-none"
             >
               <FileText size={20} />
@@ -525,6 +528,19 @@ export default function Withdrawals({ user }: { user?: any }) {
           </div>
         )}
       </AnimatePresence>
+      <ReportPreviewModal
+        isOpen={wdPreviewOpen}
+        onClose={() => setWdPreviewOpen(false)}
+        title="Laporan Penarikan Dana"
+        generatePDF={generateWithdrawalsPDF}
+        pdfFilename={`laporan-penarikan-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','NAMA ANGGOTA','JUMLAH','BANK','NO REKENING','STATUS','TANGGAL'],
+          rows: filteredWithdrawals.map((w, i) => [i+1, w.member_name||w.memberName||'-', `Rp ${(w.amount||0).toLocaleString('id-ID')}`, w.bankName||'-', w.accountNumber||'-', w.status||'-', w.date ? new Date(w.date).toLocaleDateString('id-ID') : '-']) as (string|number)[][],
+          filename: `laporan-penarikan-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </motion.div>
   );
 }

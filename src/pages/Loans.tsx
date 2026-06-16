@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import { useLanguage } from '../contexts/LanguageContext';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 
 const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-';
@@ -74,7 +75,8 @@ export default function Loans() {
     } catch {}
   };
 
-  const exportLoansPDF = async () => {
+  const [lnPreviewOpen, setLnPreviewOpen] = useState(false);
+  const generateLoansPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const color: [number, number, number] = [245, 158, 11];
     const startY = await addPDFHeader(doc, {
@@ -112,7 +114,7 @@ export default function Loans() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 8);
     addPDFFooter(doc, color);
-    doc.save(`laporan-pinjaman-${Date.now()}.pdf`);
+    return doc;
   };
 
   const filtered = filteredLoans;
@@ -342,7 +344,7 @@ export default function Loans() {
           <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Data Pinjaman</h1>
           <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Kelola data pinjaman anggota</p>
         </div>
-        <button onClick={exportLoansPDF} style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#ea580c',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
+        <button onClick={() => setLnPreviewOpen(true)} style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#ea580c',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
           <FileText size={16}/> Unduh PDF
         </button>
       </div>
@@ -440,6 +442,19 @@ export default function Loans() {
           </table>
         </div>
       </div>
+      <ReportPreviewModal
+        isOpen={lnPreviewOpen}
+        onClose={() => setLnPreviewOpen(false)}
+        title="Laporan Pinjaman Anggota"
+        generatePDF={generateLoansPDF}
+        pdfFilename={`laporan-pinjaman-${Date.now()}.pdf`}
+        excelData={{
+          headers: ['NO','ANGGOTA','JUMLAH','BUNGA','STATUS','TUJUAN','TANGGAL'],
+          rows: filteredLoans.map((l, i) => [i+1, l.member_name||l.memberName||'-', `Rp ${(l.amount||0).toLocaleString('id-ID')}`, `${l.interest_rate||l.interestRate||0}%`, l.status||'-', l.purpose||'-', l.date||l.createdDate ? new Date(l.date||l.createdDate).toLocaleDateString('id-ID') : '-']) as (string|number)[][],
+          filename: `laporan-pinjaman-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </div>
   );
 }

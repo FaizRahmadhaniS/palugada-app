@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { FileText, Download, Wallet, HandCoins, TrendingUp } from 'lucide-react';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 import jsPDF from 'jspdf';
 import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
@@ -51,7 +52,9 @@ export default function Reports() {
     });
   }, []);
 
-  const exportSavingsPDF = async () => {
+  const [rpPreviewOpen, setRpPreviewOpen] = useState(false);
+  const [rpPreviewType, setRpPreviewType] = useState<'savings'|'loans'|'shu'>('savings');
+  const exportSavingsPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const reportId = `REP-SAV-${Date.now()}`;
     const startY = await addPDFHeader(doc, {
@@ -71,10 +74,10 @@ export default function Reports() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 10);
     addPDFFooter(doc);
-    doc.save(`laporan-simpanan-${Date.now()}.pdf`);
+    return doc;
   };
 
-  const exportLoansPDF = async () => {
+  const exportLoansPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const reportId = `REP-LOAN-${Date.now()}`;
     const startY = await addPDFHeader(doc, {
@@ -97,10 +100,10 @@ export default function Reports() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 10);
     addPDFFooter(doc, [245, 158, 11]);
-    doc.save(`laporan-pinjaman-${Date.now()}.pdf`);
+    return doc;
   };
 
-  const exportSHUPDF = async () => {
+  const exportSHUPDF = async (): Promise<import('jspdf').default> => {
     const doc = new jsPDF();
     const reportId = `REP-SHU-${Date.now()}`;
     const totalSavings = savings.reduce((acc, curr) => acc + (curr.amount || 0), 0);
@@ -128,7 +131,7 @@ export default function Reports() {
     const finalY = (doc as any).lastAutoTable.finalY || 200;
     if (finalY < 240) addSignatureArea(doc, finalY + 10);
     addPDFFooter(doc, [147, 51, 234]);
-    doc.save(`laporan-shu-${Date.now()}.pdf`);
+    return doc;
   };
 
   return (
@@ -166,7 +169,7 @@ export default function Reports() {
             </div>
             <p className="text-xs text-slate-400">{filteredSavings.length} dari {savings.length} transaksi</p>
           </div>
-          <button onClick={exportSavingsPDF} disabled={loading || filteredSavings.length === 0}
+          <button onClick={() => { setRpPreviewType('savings'); setRpPreviewOpen(true); }} disabled={loading || filteredSavings.length === 0}
             className="w-full py-2.5 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
             <Download size={18} /> Unduh PDF
           </button>
@@ -202,7 +205,7 @@ export default function Reports() {
             </div>
             <p className="text-xs text-slate-400">{filteredLoans.length} dari {loans.length} pinjaman</p>
           </div>
-          <button onClick={exportLoansPDF} disabled={loading || filteredLoans.length === 0}
+          <button onClick={() => { setRpPreviewType('loans'); setRpPreviewOpen(true); }} disabled={loading || filteredLoans.length === 0}
             className="w-full py-2.5 bg-slate-900 dark:bg-amber-600 text-white rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
             <Download size={18} /> Unduh PDF
           </button>
@@ -217,12 +220,34 @@ export default function Reports() {
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Laporan SHU</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Estimasi Sisa Hasil Usaha (SHU) koperasi berdasarkan total simpanan dan pinjaman aktif.</p>
           </div>
-          <button onClick={exportSHUPDF} disabled={loading}
+          <button onClick={() => { setRpPreviewType('shu'); setRpPreviewOpen(true); }} disabled={loading}
             className="mt-auto w-full py-2.5 bg-slate-900 dark:bg-purple-600 text-white rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
             <Download size={18} /> Unduh PDF
           </button>
         </div>
       </div>
+
+      <ReportPreviewModal
+        isOpen={rpPreviewOpen}
+        onClose={() => setRpPreviewOpen(false)}
+        title={rpPreviewType === 'savings' ? 'Laporan Simpanan' : rpPreviewType === 'loans' ? 'Laporan Pinjaman' : 'Laporan SHU'}
+        generatePDF={rpPreviewType === 'savings' ? exportSavingsPDF : rpPreviewType === 'loans' ? exportLoansPDF : exportSHUPDF}
+        pdfFilename={`laporan-${rpPreviewType}-${Date.now()}.pdf`}
+        excelData={{
+          headers: rpPreviewType === 'savings'
+            ? ['NO','ANGGOTA','JENIS','JUMLAH','TANGGAL']
+            : rpPreviewType === 'loans'
+              ? ['NO','ANGGOTA','JUMLAH','TENOR','BUNGA','STATUS']
+              : ['NO','ANGGOTA','SIMPANAN','ESTIMASI SHU'],
+          rows: rpPreviewType === 'savings'
+            ? filteredSavings.map((s: any, i: number) => [i+1, s.memberName||'-', s.type||'-', `Rp ${(s.amount||0).toLocaleString('id-ID')}`, s.date ? new Date(s.date).toLocaleDateString('id-ID') : '-']) as (string|number)[][]
+            : rpPreviewType === 'loans'
+              ? filteredLoans.map((l: any, i: number) => [i+1, l.memberName||'-', `Rp ${(l.amount||0).toLocaleString('id-ID')}`, `${l.duration||0} bln`, `${l.interest_rate||0}%`, l.status||'-']) as (string|number)[][]
+              : [],
+          filename: `laporan-${rpPreviewType}-${Date.now()}.xlsx`,
+          onDownload: () => {},
+        }}
+      />
     </motion.div>
   );
 }
