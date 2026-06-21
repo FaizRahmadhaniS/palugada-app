@@ -236,7 +236,6 @@ app.use('/api', (req, res, next) => {
   // --- Payment Gateway Config ---
   const CONFIG_FILE = path.join(process.cwd(), 'payment-config.json');
   const GENERAL_CONFIG_FILE = path.join(process.cwd(), 'general-config.json');
-  const EMAIL_CONFIG_FILE = path.join(process.cwd(), 'email-config.json');
 
   function getPaymentConfig() {
     try {
@@ -268,82 +267,6 @@ app.use('/api', (req, res, next) => {
       minDeposit: 50000,
       enableOtp: false
     };
-  }
-
-  // --- Email Config (Gmail SMTP via Nodemailer) ---
-  interface EmailTemplateConfig {
-    id: string;
-    enabled: boolean;
-  }
-  interface EmailConfig {
-    provider: string;
-    fromAddress: string;
-    fromName: string;
-    gmailUser: string;
-    gmailAppPassword: string;
-    templates: EmailTemplateConfig[];
-  }
-
-  const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig[] = [
-    { id: 'member_approved',    enabled: true  },
-    { id: 'loan_approved',      enabled: true  },
-    { id: 'payment_reminder',   enabled: false },
-    { id: 'shu_distribution',   enabled: true  },
-    { id: 'monthly_report',     enabled: false },
-    { id: 'withdrawal_process', enabled: true  },
-  ];
-
-  function getEmailConfig(): EmailConfig {
-    try {
-      if (fs.existsSync(EMAIL_CONFIG_FILE)) {
-        const saved = JSON.parse(fs.readFileSync(EMAIL_CONFIG_FILE, 'utf-8'));
-        return { ...{
-          provider: 'gmail',
-          fromAddress: process.env.GMAIL_USER || '',
-          fromName: 'Koperasi Palugada',
-          gmailUser: process.env.GMAIL_USER || '',
-          gmailAppPassword: process.env.GMAIL_APP_PASSWORD || '',
-          templates: DEFAULT_EMAIL_TEMPLATES,
-        }, ...saved };
-      }
-    } catch (e) {}
-    return {
-      provider: 'gmail',
-      fromAddress: process.env.GMAIL_USER || '',
-      fromName: 'Koperasi Palugada',
-      gmailUser: process.env.GMAIL_USER || '',
-      gmailAppPassword: process.env.GMAIL_APP_PASSWORD || '',
-      templates: DEFAULT_EMAIL_TEMPLATES,
-    };
-  }
-
-  function getEmailTransporter() {
-    const cfg = getEmailConfig();
-    if (!cfg.gmailUser || !cfg.gmailAppPassword) return null;
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: cfg.gmailUser, pass: cfg.gmailAppPassword },
-    });
-  }
-
-  async function sendEmailViaSMTP(to: string, subject: string, html: string): Promise<{ success: boolean; message: string }> {
-    const cfg = getEmailConfig();
-    const transporter = getEmailTransporter();
-    if (!transporter) {
-      return { success: false, message: 'Email belum dikonfigurasi. Isi Gmail User dan App Password di Pengaturan Email.' };
-    }
-    try {
-      await transporter.sendMail({
-        from: `"${cfg.fromName || 'Koperasi Palugada'}" <${cfg.gmailUser}>`,
-        to,
-        subject,
-        html,
-      });
-      return { success: true, message: 'Email terkirim' };
-    } catch (error: any) {
-      console.error('SMTP send error:', error.message);
-      return { success: false, message: `Gagal mengirim email: ${error.message}` };
-    }
   }
 
   // --- Audit Log Helper ---
@@ -1225,7 +1148,7 @@ app.use('/api', (req, res, next) => {
   app.post("/api/withdrawals", async (req, res) => {
     const { amount, description, memberId, bankName, accountNumber, accountHolder } = req.body;
     const user = (req.session as any).user;
-
+    
     try {
       // Check member exists
       const { data: member } = await db.from('members').select('name').eq('id', memberId).single();
@@ -1234,40 +1157,34 @@ app.use('/api', (req, res, next) => {
       }
 
       // Hitung saldo sukarela dari tabel transactions
-      // PENTING: sertakan SEMUA transaksi sukarela (deposit success + withdrawal success/pending)
-      // agar saldo yang dihitung benar-benar mencerminkan sisa saldo yang bisa ditarik
-      const { data: sukarelaTx } = await db.from('transactions')
-        .select('type, amount, status')
+      const { data: sukarelaDeposits } = await db.from('transactions')
+        .select('type, amount')
         .eq('member_id', memberId)
         .eq('category', 'Savings')
+        .eq('status', 'success')
         .ilike('description', '%sukarela%');
 
-      const sukarelaSaldo = (sukarelaTx || []).reduce((sum: number, t: any) => {
-        // Deposit yang sudah success → tambah saldo
-        if (t.type !== 'Withdrawal' && t.status === 'success') return sum + (t.amount || 0);
-        // Withdrawal yang sudah success ATAU masih pending → kurangi saldo (supaya tidak bisa ditarik dobel)
-        if (t.type === 'Withdrawal' && (t.status === 'success' || t.status === 'pending')) return sum - (t.amount || 0);
-        return sum;
+      const sukarelaSaldo = (sukarelaDeposits || []).reduce((sum: number, t: any) => {
+        return sum + (t.type === 'Withdrawal' ? -(t.amount || 0) : (t.amount || 0));
       }, 0);
 
       if (sukarelaSaldo < amount) {
-        return res.status(400).json({
-          success: false,
-          message: `Saldo sukarela tidak mencukupi. Saldo tersedia: Rp ${Math.max(0, sukarelaSaldo).toLocaleString('id-ID')}`
+        return res.status(400).json({ 
+          success: false, 
+          message: `Saldo sukarela tidak mencukupi. Saldo tersedia: Rp ${Math.max(0, sukarelaSaldo).toLocaleString('id-ID')}` 
         });
       }
 
-      // Build description dengan info bank — SELALU sertakan kata "Sukarela" di awal
-      // agar transaksi ini terdeteksi konsisten oleh semua perhitungan saldo (frontend & backend)
+      // Build description with bank info
       const bankInfo = bankName ? `Bank: ${bankName} | Rek: ${accountNumber} | A/N: ${accountHolder}` : '';
-      const fullDescription = ['Penarikan Simpanan Sukarela', bankInfo, description].filter(Boolean).join(' | ');
+      const fullDescription = [bankInfo, description].filter(Boolean).join(' | ');
 
       const { data, error } = await db.from('transactions').insert({
         member_id: memberId,
         type: 'Withdrawal',
         category: 'Savings',
         amount: amount,
-        description: fullDescription,
+        description: fullDescription || 'Penarikan simpanan sukarela',
         status: 'pending'
       }).select().single();
 
@@ -1289,7 +1206,6 @@ app.use('/api', (req, res, next) => {
     const { id } = req.params;
     const { status } = req.body; // 'success' or 'failed'
     const admin = (req.session as any).user;
-
     
     try {
       const { data: withdrawal } = await db.from('transactions').select('*').eq('id', id).single();
@@ -1628,71 +1544,6 @@ app.use('/api', (req, res, next) => {
   });
 
   // Delete single savings transaction
-  // Advanced Filtering - Savings
-  app.get("/api/savings/filter", async (req, res) => {
-    // PENTING: Data simpanan tersimpan di tabel 'transactions' dengan category='Savings'
-    // (sama seperti GET /api/savings), BUKAN di tabel terpisah 'savings'
-    // CATATAN: kolom 'status' di tabel transactions ternyata smallint (bukan text seperti dokumentasi),
-    // jadi filter status TIDAK dilakukan di query DB — difilter manual di JS setelah fetch.
-    const { memberId, status, minAmount, maxAmount, search, sortBy = 'created_at', order = 'desc' } = req.query;
-    try {
-      let query = db.from('transactions').select('*').eq('category', 'Savings');
-
-      if (memberId)   query = query.eq('member_id', memberId);
-      if (minAmount)  query = query.gte('amount', Number(minAmount));
-      if (maxAmount)  query = query.lte('amount', Number(maxAmount));
-
-      const sortColumnMap: Record<string, string> = {
-        name: 'created_at', amount: 'amount', date: 'created_at', created_at: 'created_at',
-      };
-      const sortCol = sortColumnMap[sortBy as string] || 'created_at';
-      query = query.order(sortCol, { ascending: order === 'asc' });
-
-      const { data: transactions, error } = await query;
-      if (error) {
-        console.error('savings/filter error:', error.message);
-        return res.json([]);
-      }
-
-      // Resolve member names (sama seperti GET /api/savings)
-      const { data: members } = await db.from('members').select('id, name');
-      const memberMap = (members || []).reduce((acc: any, m: any) => { acc[m.id] = m.name; return acc; }, {});
-
-      let mapped = (transactions || []).map((t: any) => ({
-        id: t.id,
-        member_id: t.member_id,
-        member_name: memberMap[t.member_id] || t.member_name || 'Unknown',
-        amount: t.amount,
-        type: t.type,
-        description: t.description,
-        status: t.status,
-        date: t.created_at,
-      }));
-
-      // Filter status di JS (status bisa berupa angka atau string tergantung skema asli)
-      if (status) {
-        const statusLower = String(status).toLowerCase();
-        mapped = mapped.filter((m: any) => {
-          const ms = String(m.status ?? '').toLowerCase();
-          return ms === statusLower
-            || (statusLower === 'success' && (ms === '1' || ms === 'true'))
-            || (statusLower === 'pending' && (ms === '0' || ms === 'false'));
-        });
-      }
-
-      // Filter search di sisi server
-      if (search) {
-        const s = String(search).toLowerCase();
-        mapped = mapped.filter((m: any) => (m.member_name || '').toLowerCase().includes(s));
-      }
-
-      res.json(mapped);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-
   app.delete("/api/savings/:id", async (req, res) => {
     const { id } = req.params;
     const { error } = await db.from('transactions').delete().eq('id', id).eq('category', 'Savings');
@@ -2329,67 +2180,6 @@ app.use('/api', (req, res, next) => {
 
   // Add member statement endpoint
   // --- Single Member Detail (with photos) ---
-
-  // Advanced Filtering - Members
-  app.get("/api/members/filter", async (req, res) => {
-    const { status, type, search, sortBy = 'name', order = 'asc' } = req.query;
-    try {
-      let query = db.from('members').select('*');
-
-      if (status) query = query.eq('status', status);
-      if (type)   query = query.eq('type', type);
-      if (search) query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,nik.ilike.%${search}%`);
-
-      const sortColumnMap: Record<string, string> = {
-        name: 'name', total_savings: 'total_savings', join_date: 'join_date', email: 'email',
-      };
-      const sortCol = sortColumnMap[sortBy as string] || 'name';
-      query = query.order(sortCol, { ascending: order === 'asc' });
-
-      const { data: members, error } = await query;
-      if (error) {
-        console.error('members/filter error:', error.message);
-        return res.json([]);
-      }
-      res.json(members || []);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Advanced Filtering - Loans
-  app.get("/api/loans/filter", async (req, res) => {
-    const { status, memberId, minAmount, maxAmount, search, sortBy = 'date', order = 'desc' } = req.query;
-    try {
-      let query = db.from('loans').select('*');
-
-      if (status)     query = query.eq('status', status);
-      if (memberId)   query = query.eq('member_id', memberId);
-      if (minAmount)  query = query.gte('amount', Number(minAmount));
-      if (maxAmount)  query = query.lte('amount', Number(maxAmount));
-      if (search)     query = query.or(`member_name.ilike.%${search}%,purpose.ilike.%${search}%`);
-
-      const sortColumnMap: Record<string, string> = {
-        name: 'member_name', amount: 'amount', date: 'date', created_at: 'created_date',
-      };
-      const sortCol = sortColumnMap[sortBy as string] || 'date';
-
-      try {
-        query = query.order(sortCol, { ascending: order === 'asc' });
-      } catch (_) { /* ignore sort error */ }
-
-      const { data: loans, error } = await query;
-      if (error) {
-        console.error('loans/filter error:', error.message);
-        return res.json([]);
-      }
-      res.json(loans || []);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-
   app.get("/api/members/:id", async (req, res) => {
     const { id } = req.params;
     const { data: member, error } = await db.from('members')
@@ -2474,119 +2264,77 @@ app.use('/api', (req, res, next) => {
   });
 
   // Email Notifications Setup
-  // ── Email Settings: GET & POST ────────────────────────────────────────────
-  app.get('/api/settings/email', (req, res) => {
-    const user = (req.session as any).user;
-    if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-    const cfg = getEmailConfig();
-    // Jangan kirim app password penuh ke frontend — mask sebagian
-    const masked = {
-      ...cfg,
-      gmailAppPassword: cfg.gmailAppPassword ? '••••••••••••••••' : '',
-      hasAppPassword: !!cfg.gmailAppPassword,
-    };
-    res.json(masked);
-  });
-
-  app.post('/api/settings/email', (req, res) => {
-    const user = (req.session as any).user;
-    if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-    try {
-      const incoming = req.body;
-      const existing = getEmailConfig();
-      // Kalau field appPassword dikirim sebagai mask (titik-titik), pertahankan yang lama
-      const merged: EmailConfig = {
-        ...existing,
-        ...incoming,
-        gmailAppPassword: (incoming.gmailAppPassword && !/^•+$/.test(incoming.gmailAppPassword))
-          ? incoming.gmailAppPassword
-          : existing.gmailAppPassword,
-      };
-      fs.writeFileSync(EMAIL_CONFIG_FILE, JSON.stringify(merged, null, 2));
-      res.json({ success: true, message: 'Pengaturan email berhasil disimpan' });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
-  // ── Kirim Email Test (benar-benar terkirim via Gmail SMTP) ─────────────────
-  app.post('/api/notifications/send-test-email', async (req, res) => {
-    const user = (req.session as any).user;
-    if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-
-    const { toEmail } = req.body;
-    if (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
-      return res.status(400).json({ success: false, message: 'Alamat email tidak valid' });
-    }
-
-    const result = await sendEmailViaSMTP(
-      toEmail,
-      'Email Test dari Palugada',
-      `<div style="font-family:Arial,sans-serif;padding:24px;background:#f8fafc">
-        <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
-          <h2 style="color:#059669;margin:0 0 16px">✓ Email Test Berhasil</h2>
-          <p style="color:#334155;line-height:1.6">Ini adalah email test untuk memverifikasi integrasi email Anda di sistem Palugada.</p>
-          <p style="color:#94a3b8;font-size:13px;margin-top:24px">Dikirim oleh ${user.name || 'Admin'} pada ${new Date().toLocaleString('id-ID')}</p>
-        </div>
-      </div>`
-    );
-
-    if (result.success) {
-      res.json({ success: true, message: `Email test berhasil dikirim ke ${toEmail}` });
-    } else {
-      res.status(500).json({ success: false, message: result.message });
-    }
-  });
-
-  // ── Kirim Email Notifikasi (dipakai oleh sistem untuk event seperti approval, dll) ──
   app.post("/api/notifications/send-email", async (req, res) => {
     const user = (req.session as any).user;
     if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-
-    const { userId, subject, message, template = 'generic', toEmail } = req.body;
+    
+    const { userId, subject, message, template = 'generic' } = req.body;
     try {
-      // Selalu buat notifikasi in-app
+      // Placeholder for email service integration (Nodemailer setup)
       await createNotification(userId, subject, message, 'email', '');
-
-      // Cek apakah template ini diaktifkan di pengaturan
-      const cfg = getEmailConfig();
-      const templateCfg = cfg.templates.find(t => t.id === template);
-      const templateEnabled = templateCfg ? templateCfg.enabled : true;
-
-      if (!templateEnabled) {
-        return res.json({ success: true, message: 'Notifikasi in-app dibuat (template email dinonaktifkan)', emailSent: false });
-      }
-
-      // Resolve email tujuan: pakai toEmail jika ada, atau cari dari users table via userId
-      let targetEmail = toEmail;
-      if (!targetEmail && userId) {
-        const { data: targetUser } = await db.from('users').select('email').eq('id', userId).maybeSingle();
-        targetEmail = targetUser?.email;
-      }
-
-      if (!targetEmail) {
-        return res.json({ success: true, message: 'Notifikasi in-app dibuat (email tujuan tidak ditemukan)', emailSent: false });
-      }
-
-      const emailResult = await sendEmailViaSMTP(
-        targetEmail,
-        subject,
-        `<div style="font-family:Arial,sans-serif;padding:24px;background:#f8fafc">
-          <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
-            <h2 style="color:#059669;margin:0 0 16px">${subject}</h2>
-            <p style="color:#334155;line-height:1.6">${message}</p>
-            <p style="color:#94a3b8;font-size:13px;margin-top:24px">Koperasi Palugada — ${new Date().toLocaleString('id-ID')}</p>
-          </div>
-        </div>`
-      );
-
-      res.json({
-        success: true,
-        message: emailResult.success ? 'Notifikasi & email terkirim' : `Notifikasi dibuat, namun email gagal: ${emailResult.message}`,
-        emailSent: emailResult.success,
-      });
+      res.json({ success: true, message: 'Email notification queued' });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Advanced Filtering - Members
+  app.get("/api/members/filter", async (req, res) => {
+    const { status, type, search, sortBy = 'name', order = 'asc' } = req.query;
+    try {
+      let query = db.from('members').select('*');
+      
+      if (status) query = query.eq('status', status);
+      if (type) query = query.eq('type', type);
+      if (search) query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,nik.ilike.%${search}%`);
+      
+      query = query.order(sortBy as string, { ascending: order === 'asc' });
+      const { data: members } = await query;
+      
+      res.json(members || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Advanced Filtering - Loans
+  app.get("/api/loans/filter", async (req, res) => {
+    const { status, memberId, minAmount, maxAmount, search, sortBy = 'created_at', order = 'desc' } = req.query;
+    try {
+      let query = db.from('loans').select('*');
+      
+      if (status) query = query.eq('status', status);
+      if (memberId) query = query.eq('memberId', memberId);
+      if (minAmount) query = query.gte('amount', Number(minAmount));
+      if (maxAmount) query = query.lte('amount', Number(maxAmount));
+      if (search) query = query.or(`member_name.ilike.%${search}%,purpose.ilike.%${search}%`);
+      
+      query = query.order(sortBy as string, { ascending: order === 'asc' });
+      const { data: loans } = await query;
+      
+      res.json(loans || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Advanced Filtering - Savings
+  app.get("/api/savings/filter", async (req, res) => {
+    const { memberId, status, minAmount, maxAmount, sortBy = 'created_at', order = 'desc' } = req.query;
+    try {
+      let query = db.from('savings').select('*');
+      
+      if (memberId) query = query.eq('memberId', memberId);
+      if (status) query = query.eq('status', status);
+      if (minAmount) query = query.gte('amount', Number(minAmount));
+      if (maxAmount) query = query.lte('amount', Number(maxAmount));
+      
+      query = query.order(sortBy as string, { ascending: order === 'asc' });
+      const { data: savings } = await query;
+      
+      res.json(savings || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

@@ -169,32 +169,18 @@ function Sidebar({ user, onLogout, isOpen, onClose }: { user:any; onLogout:()=>v
       <div style={{ display:'flex', alignItems:'center', height:64, padding:'0 16px', borderBottom:`1px solid ${border}`, gap:10, flexShrink:0, justifyContent: col && !mob ? 'center' : 'space-between' }}>
         {(!col || mob) ? (
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <svg width="34" height="34" viewBox="0 0 34 34" style={{ flexShrink:0 }}>
-              <defs>
-                <linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#10b981"/>
-                  <stop offset="100%" stopColor="#047857"/>
-                </linearGradient>
-              </defs>
-              <rect width="34" height="34" rx="10" fill="url(#pg)"/>
-              <text x="17" y="24" textAnchor="middle" fill="white" fontFamily="Georgia,serif" fontSize="20" fontWeight="bold" letterSpacing="-1">P</text>
-            </svg>
+            <div style={{ width:34, height:34, borderRadius:10, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 4px 12px rgba(5,150,105,.3)', overflow:'hidden' }}>
+              <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'80%', height:'80%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.style.background=GREEN; (e.target as HTMLImageElement).parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:18px">P</span>'; }} />
+            </div>
             <div>
               <p style={{ fontSize:13, fontWeight:700, color: isDark?'#fff':'#111827', margin:0, letterSpacing:'-0.3px' }}>Palugada</p>
               <p style={{ fontSize:10, color:'#10b981', fontWeight:600, margin:0, textTransform:'capitalize' }}>{user?.role}</p>
             </div>
           </div>
         ) : (
-          <svg width="34" height="34" viewBox="0 0 34 34">
-            <defs>
-              <linearGradient id="pg2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#10b981"/>
-                <stop offset="100%" stopColor="#047857"/>
-              </linearGradient>
-            </defs>
-            <rect width="34" height="34" rx="10" fill="url(#pg2)"/>
-            <text x="17" y="24" textAnchor="middle" fill="white" fontFamily="Georgia,serif" fontSize="20" fontWeight="bold" letterSpacing="-1">P</text>
-          </svg>
+          <div style={{ width:34, height:34, borderRadius:10, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 4px 12px rgba(5,150,105,.3)', overflow:'hidden' }}>
+            <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'80%', height:'80%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.style.background=GREEN; (e.target as HTMLImageElement).parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:18px">P</span>'; }} />
+          </div>
         )}
         {mob && <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:txtDim, padding:4 }}><X size={18}/></button>}
       </div>
@@ -436,8 +422,8 @@ export default function App() {
 
   if (loading) return (
     <div style={{ height:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:20, background: isDark ? '#0d0f14' : '#f9fafb' }}>
-      <div style={{ width:56, height:56, borderRadius:16, background:GREEN, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(5,150,105,.35)' }}>
-        <span style={{ color:'#fff', fontWeight:900, fontSize:24 }}>P</span>
+      <div style={{ width:56, height:56, borderRadius:16, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(5,150,105,.35)', overflow:'hidden' }}>
+        <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'70%', height:'70%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.style.background=GREEN; (e.target as HTMLImageElement).parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:24px">P</span>'; }} />
       </div>
       <div style={{ display:'flex', gap:6 }}>
         {[0,1,2].map(i => (

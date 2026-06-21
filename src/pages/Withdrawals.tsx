@@ -83,7 +83,18 @@ export default function Withdrawals({ user }: { user?: any }) {
         if (Array.isArray(data)) {
           const sukarela = data
             .filter(s => (s.description || s.type || '').toLowerCase().includes('sukarela'))
-            .reduce((sum, s) => sum + (s.type === 'Withdrawal' ? -(s.amount || 0) : (s.amount || 0)), 0);
+            .reduce((sum, s) => {
+              // Deposit yang sudah success → tambah saldo
+              if (s.type !== 'Withdrawal' && (s.status === 'success' || s.status === 'Success')) {
+                return sum + (s.amount || 0);
+              }
+              // Withdrawal yang success ATAU masih pending → kurangi saldo
+              // (pending dikurangi juga supaya tidak bisa ajukan penarikan dobel melebihi saldo)
+              if (s.type === 'Withdrawal' && (s.status === 'success' || s.status === 'Success' || s.status === 'pending')) {
+                return sum - (s.amount || 0);
+              }
+              return sum;
+            }, 0);
           setSukarelaSaldo(Math.max(0, sukarela));
         }
       })

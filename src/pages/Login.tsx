@@ -356,14 +356,18 @@ export default function Login({ onLogin }: { onLogin: (u: any) => void }) {
           <div className="pal-overlay">
             {/* Left sub-panel — visible when reg mode, says "Selamat Datang" with Masuk btn */}
             <div className="pal-ov-panel pal-ov-left">
-              <div className="pal-ov-logo">P</div>
+              <div className="pal-ov-logo">
+                <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'70%', height:'70%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.innerHTML='P'; }} />
+              </div>
               <h3 className="pal-ov-title">Selamat Datang!</h3>
               <p className="pal-ov-desc">Sudah punya akun? Masuk dan lanjutkan pengalaman bersama Palugada Cooperative.</p>
               <OutlineBtn onClick={() => { setIsReg(false); clear(); }}>Masuk</OutlineBtn>
             </div>
             {/* Right sub-panel — visible when login mode, says "Bergabung!" with Daftar btn */}
             <div className="pal-ov-panel pal-ov-right">
-              <div className="pal-ov-logo">P</div>
+              <div className="pal-ov-logo">
+                <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'70%', height:'70%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.innerHTML='P'; }} />
+              </div>
               <h3 className="pal-ov-title">Bergabung!</h3>
               <p className="pal-ov-desc">Belum punya akun? Daftar sekarang dan mulai kelola koperasi Anda secara digital.</p>
               <OutlineBtn onClick={() => { setIsReg(true); clear(); }}>Daftar</OutlineBtn>
@@ -505,12 +509,14 @@ function Styles() {
 
       .pal-ov-logo {
         width:58px; height:58px; border-radius:14px;
-        background:rgba(255,255,255,0.22);
+        background:#ffffff;
         display:flex; align-items:center; justify-content:center;
-        font-size:22px; font-weight:900; color:#fff;
+        font-size:22px; font-weight:900; color:#10b981;
         margin-bottom:20px; position:relative; z-index:1;
-        box-shadow:0 8px 24px rgba(0,0,0,0.14);
+        box-shadow:0 8px 24px rgba(0,0,0,0.18);
+        overflow:hidden;
       }
+      .pal-ov-logo img { width:65%; height:65%; object-fit:contain; }
       .pal-ov-title { font-size:21px; font-weight:900; margin:0 0 10px; position:relative; z-index:1; }
       .pal-ov-desc  { font-size:13px; line-height:1.65; opacity:0.85; margin-bottom:24px; position:relative; z-index:1; }
 

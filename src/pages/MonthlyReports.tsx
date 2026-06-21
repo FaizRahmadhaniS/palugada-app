@@ -1,272 +1,235 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Search, Printer, FileText, Calendar } from 'lucide-react';
-import ReportPreviewModal from '../components/ReportPreviewModal';
+import { Calendar, TrendingUp, TrendingDown, DollarSign, Users, FileText, ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import jsPDF from 'jspdf';
-import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
 import autoTable from 'jspdf-autotable';
+import { addPDFHeader, addPDFFooter, addSignatureArea } from '../utils/pdfHelper';
+import ReportPreviewModal from '../components/ReportPreviewModal';
 
 const fmt = (n: number) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
-const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
-export default function MemberReports({ user }: { user: any }) {
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+interface MonthlyData {
+  totalSavings: number;
+  totalWithdrawals: number;
+  totalLoans: number;
+  totalRepayments: number;
+  totalIncome: number;
+  totalExpense: number;
+  newMembers: number;
+  transactionCount: number;
+  netCashflow: number;
+}
+
+export default function MonthlyReports({ user }: { user: any }) {
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [data, setData] = useState<MonthlyData | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
+  const fetchReport = async (month: number, year: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/reports/monthly?month=${month}&year=${year}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Gagal memuat data (${res.status})`);
+      const json = await res.json();
+      setData({
+        totalSavings:     json.totalSavings     || 0,
+        totalWithdrawals: json.totalWithdrawals || 0,
+        totalLoans:       json.totalLoans       || 0,
+        totalRepayments:  json.totalRepayments  || 0,
+        totalIncome:      json.totalIncome      || 0,
+        totalExpense:     json.totalExpense     || 0,
+        newMembers:       json.newMembers       || 0,
+        transactionCount: json.transactionCount || 0,
+        netCashflow:      json.netCashflow      || 0,
+      });
+    } catch (e: any) {
+      setError(e.message || 'Gagal memuat laporan');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  useEffect(() => {
-    if (!user?.id) { setError('User tidak ditemukan'); setLoading(false); return; }
-    const loadHistory = async () => {
-      try {
-        const res = await fetch(`/api/member_payments/${user.id}`, { credentials: 'include' });
+  useEffect(() => { fetchReport(selectedMonth, selectedYear); }, [selectedMonth, selectedYear]);
 
-        if (res.status === 401 || res.status === 403) {
-          setError('Sesi habis. Silakan login ulang.');
-          setLoading(false);
-          return;
-        }
+  const prevMonth = () => {
+    if (selectedMonth === 1) { setSelectedMonth(12); setSelectedYear(y => y - 1); }
+    else setSelectedMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (selectedMonth === 12) { setSelectedMonth(1); setSelectedYear(y => y + 1); }
+    else setSelectedMonth(m => m + 1);
+  };
 
-        if (!res.ok) {
-          setError(`Gagal memuat riwayat (${res.status})`);
-          setLoading(false);
-          return;
-        }
-
-        const ct = res.headers.get('content-type');
-        if (!ct || !ct.includes('application/json')) {
-          setError('Format data tidak valid dari server');
-          setLoading(false);
-          return;
-        }
-
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setHistory(data);
-        } else {
-          setError('Data tidak valid');
-        }
-      } catch (err: any) {
-        setError(err.message || 'Gagal memuat laporan. Periksa koneksi Anda.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadHistory();
-  }, [user?.id]);
-
-  const [mrPreviewOpen, setMrPreviewOpen] = useState(false);
-  const exportPersonalPDF = async (): Promise<import('jspdf').default> => {
+  const generatePDF = async (): Promise<jsPDF> => {
     const doc = new jsPDF();
+    const color: [number, number, number] = [16, 185, 129];
+    const periodLabel = `${MONTHS[selectedMonth - 1]} ${selectedYear}`;
     const startY = await addPDFHeader(doc, {
-      reportId: `REP-MEM-${Date.now()}`,
-      title: 'Riwayat Transaksi Pribadi',
-      subtitle: `Anggota: ${user.name}`,
-      printedBy: user.name
+      reportId: `RPT-${selectedYear}${String(selectedMonth).padStart(2,'0')}-${Date.now()}`,
+      title: 'Laporan Bulanan Koperasi',
+      subtitle: `Periode: ${periodLabel}`,
+      accentColor: color,
+      printedBy: user?.name,
     });
     autoTable(doc, {
       startY,
-      head: [['NO', 'TANGGAL', 'JENIS TRANSAKSI', 'STATUS', 'JUMLAH']],
-      body: history.map((h, i) => [i + 1, fmtDate(h.date), h.type, h.status, fmt(h.amount)]),
-      headStyles: { fillColor: [16, 185, 129] as [number,number,number], textColor: [255, 255, 255] as [number,number,number], fontSize: 8, fontStyle: 'bold', halign: 'center', cellPadding: 2.5, minCellHeight: 8 },
-      bodyStyles: { fontSize: 8, cellPadding: 2, minCellHeight: 6.5, textColor: [15, 23, 42] as [number,number,number] },
-      alternateRowStyles: { fillColor: [240, 253, 244] as [number,number,number] },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 12 },
-        1: { halign: 'center', cellWidth: 28 },
-        3: { halign: 'center', cellWidth: 24 },
-        4: { halign: 'right', cellWidth: 35 }
-      },
-      tableLineColor: [226, 232, 240] as [number,number,number],
-      tableLineWidth: 0.3,
-      margin: { left: 14, right: 14 }
+      head: [['KETERANGAN', 'JUMLAH']],
+      body: [
+        ['Total Simpanan Masuk',        fmt(data?.totalSavings     || 0)],
+        ['Total Penarikan',             fmt(data?.totalWithdrawals || 0)],
+        ['Total Pinjaman Dicairkan',    fmt(data?.totalLoans       || 0)],
+        ['Total Angsuran Diterima',     fmt(data?.totalRepayments  || 0)],
+        ['Pemasukan Operasional',       fmt(data?.totalIncome      || 0)],
+        ['Pengeluaran Operasional',     fmt(data?.totalExpense     || 0)],
+        ['Anggota Baru',               `${data?.newMembers || 0} orang`],
+        ['Jumlah Transaksi',           `${data?.transactionCount || 0} transaksi`],
+        ['Net Cashflow',                fmt(data?.netCashflow      || 0)],
+      ],
+      headStyles: { fillColor: color, textColor: [255,255,255] as [number,number,number], fontSize: 9, fontStyle: 'bold', halign: 'center', cellPadding: 3 },
+      bodyStyles: { fontSize: 9, cellPadding: 3, textColor: [15,23,42] as [number,number,number] },
+      alternateRowStyles: { fillColor: [240,253,244] as [number,number,number] },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 100 }, 1: { halign: 'right', cellWidth: 80 } },
+      tableLineColor: [226,232,240] as [number,number,number], tableLineWidth: 0.3,
+      margin: { left: 14, right: 14 },
     });
     const finalY = (doc as any).lastAutoTable.finalY || 200;
-    if (finalY < 240) addSignatureArea(doc, finalY + 8);
-    addPDFFooter(doc);
+    if (finalY < 220) addSignatureArea(doc, finalY + 12);
+    addPDFFooter(doc, color);
     return doc;
   };
 
-  const handlePrint = (t: any) => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    w.document.write(`<html><head><title>Bukti</title><style>body{font-family:monospace;padding:40px}
-    .box{border:1px dashed #ccc;padding:30px;max-width:400px;margin:0 auto}
-    .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
-    .total{font-weight:bold;font-size:18px;padding-top:12px}
-    </style></head><body><div class="box">
-    <h2 style="text-align:center">PALUGADA COOP</h2>
-    <p style="text-align:center;color:#666">Koperasi Simpan Pinjam</p>
-    <div class="row"><span>Tanggal</span><span>${fmtDate(t.date)}</span></div>
-    <div class="row"><span>Anggota</span><span>${user.name}</span></div>
-    <div class="row"><span>Jenis</span><span>${t.type}</span></div>
-    <div class="row"><span>Status</span><span>${t.status}</span></div>
-    <div class="row total"><span>TOTAL</span><span>${fmt(t.amount)}</span></div>
-    </div><script>window.onload=()=>window.print()</script></body></html>`);
-    w.document.close();
-  };
-
-  const filtered = history.filter(h => {
-    const matchSearch = (h.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || (h.type || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = !filterStatus || (h.status || '').toLowerCase() === filterStatus;
-    const d = (h.date || '').split('T')[0];
-    const matchFrom = !filterDateFrom || d >= filterDateFrom;
-    const matchTo = !filterDateTo || d <= filterDateTo;
-    return matchSearch && matchStatus && matchFrom && matchTo;
-  });
+  const stats = [
+    { label: 'Total Simpanan',      value: fmt(data?.totalSavings     || 0), icon: TrendingUp,   color: '#059669', bg: '#f0fdf4', border: '#bbf7d0' },
+    { label: 'Total Penarikan',     value: fmt(data?.totalWithdrawals || 0), icon: TrendingDown, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    { label: 'Pinjaman Cair',       value: fmt(data?.totalLoans       || 0), icon: DollarSign,   color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    { label: 'Angsuran Diterima',   value: fmt(data?.totalRepayments  || 0), icon: DollarSign,   color: '#0891b2', bg: '#f0f9ff', border: '#bae6fd' },
+    { label: 'Pemasukan Ops.',      value: fmt(data?.totalIncome      || 0), icon: TrendingUp,   color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    { label: 'Pengeluaran Ops.',    value: fmt(data?.totalExpense     || 0), icon: TrendingDown, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
+    { label: 'Anggota Baru',        value: `${data?.newMembers || 0} orang`, icon: Users,       color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4' },
+    { label: 'Total Transaksi',     value: `${data?.transactionCount || 0}`, icon: FileText,    color: '#374151', bg: '#f9fafb', border: '#e5e7eb' },
+  ];
 
   return (
-    <div style={{ padding: '20px 16px', width: '100%' }}>
-      <style>{`
-        @keyframes sp { to { transform: rotate(360deg); } }
-        .mr-card { display: none; }
-        @media (max-width: 640px) {
-          .mr-table-wrap { display: none; }
-          .mr-card { display: flex; flex-direction: column; gap: 10px; }
-        }
-      `}</style>
+    <div style={{ padding: '24px', width: '100%', maxWidth: 1100 }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* Header */}
-      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16, marginBottom:28 }}>
         <div>
-          <h1 style={{ fontSize:'clamp(18px,3vw,26px)',fontWeight:800,color:'#111827',margin:0 }}>Riwayat & Laporan</h1>
-          <p style={{ fontSize:13,color:'#6b7280',marginTop:4 }}>Riwayat transaksi dan bukti pembayaran Anda</p>
+          <h1 style={{ fontSize: 'clamp(20px,3vw,28px)', fontWeight:800, color:'#111827', margin:0 }}>Laporan Bulanan</h1>
+          <p style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>Ringkasan aktivitas keuangan koperasi per bulan</p>
         </div>
-        <button onClick={() => setMrPreviewOpen(true)}
-          style={{ display:'flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#059669',color:'#fff',border:'none',borderRadius:11,fontSize:13,fontWeight:700,cursor:'pointer',flexShrink:0 }}>
-          <Download size={16}/> Unduh PDF
+        <button onClick={() => setPreviewOpen(true)} disabled={!data || loading}
+          style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 20px', background:(!data||loading)?'#9ca3af':'#059669', color:'#fff', border:'none', borderRadius:12, fontSize:13, fontWeight:700, cursor:(!data||loading)?'not-allowed':'pointer' }}>
+          <FileText size={16} /> Unduh PDF
         </button>
       </div>
 
-      {/* Search + Filter */}
-      <div style={{ display:'flex',flexWrap:'wrap',gap:10,marginBottom:16,alignItems:'center' }}>
-        <div style={{ position:'relative' }}>
-          <Search size={15} style={{ position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:'#9ca3af' }}/>
-          <input type="text" placeholder="Cari transaksi..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            style={{ padding:'9px 12px 9px 36px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',width:200 }}/>
+      {/* Period Selector */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:28, background:'#fff', border:'1.5px solid #e5e7eb', borderRadius:14, padding:'14px 20px', width:'fit-content', boxShadow:'0 1px 4px rgba(0,0,0,.05)', flexWrap:'wrap' }}>
+        <button onClick={prevMonth} style={{ padding:8, border:'1.5px solid #e5e7eb', borderRadius:9, background:'#f9fafb', cursor:'pointer', display:'flex', alignItems:'center' }}>
+          <ChevronLeft size={16} color="#374151" />
+        </button>
+        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:180, justifyContent:'center' }}>
+          <Calendar size={18} color="#059669" />
+          <span style={{ fontSize:16, fontWeight:800, color:'#111827' }}>{MONTHS[selectedMonth-1]} {selectedYear}</span>
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          style={{ padding:'9px 12px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none',color:'#374151' }}>
-          <option value="">Semua Status</option>
-          <option value="success">Berhasil</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Gagal</option>
+        <button onClick={nextMonth} style={{ padding:8, border:'1.5px solid #e5e7eb', borderRadius:9, background:'#f9fafb', cursor:'pointer', display:'flex', alignItems:'center' }}>
+          <ChevronRight size={16} color="#374151" />
+        </button>
+        <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))}
+          style={{ padding:'8px 12px', border:'1.5px solid #e5e7eb', borderRadius:9, fontSize:13, background:'#f9fafb', outline:'none', cursor:'pointer', color:'#374151' }}>
+          {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </select>
-        <span style={{ fontSize:12,color:'#9ca3af',fontWeight:600 }}>Tanggal:</span>
-        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
-        <span style={{ color:'#9ca3af' }}>—</span>
-        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-          style={{ padding:'9px 10px',border:'1.5px solid #e5e7eb',borderRadius:10,fontSize:13,background:'#f9fafb',outline:'none' }} />
-        {(filterStatus || filterDateFrom || filterDateTo) && (
-          <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); }}
-            style={{ padding:'6px 12px',background:'#fee2e2',color:'#ef4444',border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer' }}>✕ Reset</button>
-        )}
-        <span style={{ fontSize:12,color:'#9ca3af',marginLeft:'auto' }}>{filtered.length} transaksi</span>
+        <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
+          style={{ padding:'8px 12px', border:'1.5px solid #e5e7eb', borderRadius:9, fontSize:13, background:'#f9fafb', outline:'none', cursor:'pointer', color:'#374151' }}>
+          {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button onClick={() => fetchReport(selectedMonth, selectedYear)}
+          style={{ padding:'8px 12px', border:'1.5px solid #e5e7eb', borderRadius:9, background:'#f9fafb', cursor:'pointer', display:'flex', alignItems:'center' }}>
+          <RefreshCw size={14} color="#6b7280" />
+        </button>
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div style={{ display:'flex',justifyContent:'center',padding:48 }}>
-          <div style={{ width:28,height:28,border:'3px solid #e5e7eb',borderTop:'3px solid #059669',borderRadius:'50%',animation:'sp .8s linear infinite' }}/>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:80, gap:16 }}>
+          <Loader2 size={36} color="#059669" style={{ animation:'spin 1s linear infinite' }} />
+          <p style={{ fontSize:14, color:'#6b7280' }}>Memuat laporan {MONTHS[selectedMonth-1]} {selectedYear}...</p>
         </div>
       ) : error ? (
-        <div style={{ background:'#fff1f2',border:'1.5px solid #fecdd3',borderRadius:14,padding:'24px',textAlign:'center' }}>
-          <p style={{ fontSize:14,color:'#be123c',marginBottom:12 }}>{error}</p>
-          <button onClick={() => { setLoading(true); setError(null); }}
-            style={{ padding:'8px 20px',background:'#059669',color:'#fff',border:'none',borderRadius:9,fontSize:13,fontWeight:600,cursor:'pointer' }}>Coba Lagi</button>
+        <div style={{ background:'#fef2f2', border:'1.5px solid #fecaca', borderRadius:14, padding:24, textAlign:'center' }}>
+          <p style={{ fontSize:14, color:'#dc2626', fontWeight:600, marginBottom:12 }}>⚠ {error}</p>
+          <button onClick={() => fetchReport(selectedMonth, selectedYear)}
+            style={{ padding:'8px 20px', background:'#059669', color:'#fff', border:'none', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            Coba Lagi
+          </button>
         </div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign:'center',padding:'48px 20px',background:'#f9fafb',borderRadius:14,border:'1.5px dashed #e5e7eb' }}>
-          <FileText size={40} color="#d1d5db" style={{ marginBottom:10 }}/>
-          <p style={{ fontSize:14,color:'#9ca3af',fontWeight:500 }}>Belum ada riwayat transaksi</p>
-        </div>
-      ) : (
+      ) : data ? (
         <>
-          {/* DESKTOP: Table */}
-          <div className="mr-table-wrap" style={{ background:'#fff',borderRadius:14,border:'1.5px solid #f3f4f6',overflow:'hidden',boxShadow:'0 1px 6px rgba(0,0,0,.05)' }}>
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%',borderCollapse:'collapse',minWidth:500 }}>
-                <thead>
-                  <tr style={{ background:'#f9fafb',borderBottom:'1.5px solid #f3f4f6' }}>
-                    {['Aksi','Tanggal','Jenis Transaksi','Status','Jumlah'].map(h => (
-                      <th key={h} style={{ padding:'12px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((h, i) => (
-                    <tr key={h.id||i} style={{ borderBottom:'1px solid #f9fafb' }}
-                      onMouseEnter={e => (e.currentTarget.style.background='#f9fafb')}
-                      onMouseLeave={e => (e.currentTarget.style.background='transparent')}>
-                      <td style={{ padding:'12px 16px' }}>
-                        <button onClick={() => handlePrint(h)}
-                          style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 10px',background:'#f0fdf4',color:'#059669',border:'1px solid #86efac',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer' }}>
-                          <Printer size={12}/> Cetak
-                        </button>
-                      </td>
-                      <td style={{ padding:'12px 16px',fontSize:13,color:'#6b7280',whiteSpace:'nowrap' }}>
-                        <div style={{ display:'flex',alignItems:'center',gap:5 }}>
-                          <Calendar size={12} color="#9ca3af"/>{fmtDate(h.date)}
-                        </div>
-                      </td>
-                      <td style={{ padding:'12px 16px',fontSize:13,fontWeight:600,color:'#111827',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</td>
-                      <td style={{ padding:'12px 16px' }}>
-                        <span style={{ fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:'#f0fdf4',color:'#059669',border:'1px solid #86efac' }}>{h.status}</span>
-                      </td>
-                      <td style={{ padding:'12px 16px',fontSize:14,fontWeight:800,color:'#059669',whiteSpace:'nowrap' }}>{fmt(h.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Net Cashflow Banner */}
+          <div style={{
+            background: data.netCashflow >= 0 ? 'linear-gradient(135deg,#059669,#047857)' : 'linear-gradient(135deg,#dc2626,#b91c1c)',
+            borderRadius:16, padding:'20px 28px', marginBottom:24,
+            display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12,
+            boxShadow:'0 4px 16px rgba(0,0,0,.12)',
+          }}>
+            <div>
+              <p style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.75)', textTransform:'uppercase', letterSpacing:'.06em', margin:0 }}>
+                Net Cashflow — {MONTHS[selectedMonth-1]} {selectedYear}
+              </p>
+              <p style={{ fontSize:'clamp(22px,4vw,32px)', fontWeight:900, color:'#fff', margin:'6px 0 0', lineHeight:1 }}>
+                {fmt(data.netCashflow)}
+              </p>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <p style={{ fontSize:13, color:'rgba(255,255,255,.8)', margin:0 }}>{data.transactionCount} transaksi</p>
+              <p style={{ fontSize:13, color:'rgba(255,255,255,.8)', margin:'4px 0 0' }}>{data.newMembers} anggota baru</p>
             </div>
           </div>
 
-          {/* MOBILE: Cards */}
-          <div className="mr-card">
-            {filtered.map((h, i) => (
-              <div key={h.id||i} style={{ background:'#fff',border:'1.5px solid #f3f4f6',borderRadius:14,padding:16,boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
-                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,gap:8 }}>
-                  <div style={{ flex:1,minWidth:0 }}>
-                    <p style={{ fontSize:14,fontWeight:700,color:'#111827',margin:'0 0 4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{h.type}</p>
-                    <div style={{ display:'flex',alignItems:'center',gap:5 }}>
-                      <Calendar size={11} color="#9ca3af"/>
-                      <span style={{ fontSize:12,color:'#6b7280' }}>{fmtDate(h.date)}</span>
-                    </div>
+          {/* Stats Grid */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14 }}>
+            {stats.map(({ label, value, icon: Icon, color, bg, border }) => (
+              <div key={label} style={{ background:bg, border:`1.5px solid ${border}`, borderRadius:14, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                  <div style={{ width:36, height:36, background:'#fff', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 4px rgba(0,0,0,.06)' }}>
+                    <Icon size={18} color={color} />
                   </div>
-                  <div style={{ textAlign:'right',flexShrink:0 }}>
-                    <p style={{ fontSize:16,fontWeight:800,color:'#059669',margin:0 }}>{fmt(h.amount)}</p>
-                    <span style={{ fontSize:10,fontWeight:700,color:'#059669',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:6,padding:'2px 8px',display:'inline-block',marginTop:4 }}>{h.status}</span>
-                  </div>
+                  <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.04em', margin:0 }}>{label}</p>
                 </div>
-                <button onClick={() => handlePrint(h)}
-                  style={{ width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'10px',background:'#f0fdf4',color:'#059669',border:'1.5px solid #86efac',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer' }}>
-                  <Printer size={14}/> Cetak Bukti Transaksi
-                </button>
+                <p style={{ fontSize:'clamp(14px,2vw,18px)', fontWeight:800, color, margin:0 }}>{value}</p>
               </div>
             ))}
           </div>
         </>
-      )}
+      ) : null}
 
       <ReportPreviewModal
-        isOpen={mrPreviewOpen}
-        onClose={() => setMrPreviewOpen(false)}
-        title="Laporan Transaksi Pribadi"
-        generatePDF={exportPersonalPDF}
-        pdfFilename={`laporan-saya-${Date.now()}.pdf`}
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={`Laporan Bulanan — ${MONTHS[selectedMonth-1]} ${selectedYear}`}
+        generatePDF={generatePDF}
+        pdfFilename={`laporan-bulanan-${selectedYear}-${String(selectedMonth).padStart(2,'0')}.pdf`}
         excelData={{
-          headers: ['NO','TANGGAL','JENIS TRANSAKSI','STATUS','JUMLAH'],
-          rows: filtered.map((h: any, i: number) => [
-            i+1,
-            h.date ? new Date(h.date).toLocaleDateString('id-ID') : '-',
-            h.type||'-',
-            h.status||'-',
-            `Rp ${(h.amount||0).toLocaleString('id-ID')}`
-          ]) as (string|number)[][],
-          filename: `laporan-saya-${Date.now()}.xlsx`,
+          headers: ['KETERANGAN', 'JUMLAH'],
+          rows: data ? [
+            ['Total Simpanan',      fmt(data.totalSavings)],
+            ['Total Penarikan',     fmt(data.totalWithdrawals)],
+            ['Pinjaman Dicairkan',  fmt(data.totalLoans)],
+            ['Angsuran Diterima',   fmt(data.totalRepayments)],
+            ['Pemasukan Ops.',      fmt(data.totalIncome)],
+            ['Pengeluaran Ops.',    fmt(data.totalExpense)],
+            ['Anggota Baru',        `${data.newMembers} orang`],
+            ['Total Transaksi',     `${data.transactionCount}`],
+            ['Net Cashflow',        fmt(data.netCashflow)],
+          ] as (string|number)[][] : [],
+          filename: `laporan-bulanan-${selectedYear}-${String(selectedMonth).padStart(2,'0')}.xlsx`,
           onDownload: () => {},
         }}
       />

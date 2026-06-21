@@ -116,8 +116,8 @@ export default function Landing() {
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:50, background:'rgba(255,255,255,0.92)', backdropFilter:'blur(16px)', borderBottom:'1px solid #f3f4f6' }}>
         <div style={{ maxWidth:1160, margin:'0 auto', padding:'0 20px', display:'flex', alignItems:'center', justifyContent:'space-between', height:64 }}>
           <Link to="/" style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:10, background:GG, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 12px rgba(5,150,105,.3)' }}>
-              <span style={{ color:'#fff', fontWeight:900, fontSize:14 }}>P</span>
+            <div style={{ width:32, height:32, borderRadius:10, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 12px rgba(5,150,105,.3)', overflow:'hidden' }}>
+              <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'80%', height:'80%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.style.background=GG; (e.target as HTMLImageElement).parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:14px">P</span>'; }} />
             </div>
             <span style={{ fontSize:18, fontWeight:900, color:'#111827' }}>Palugada<span style={{ color:'#10b981' }}>.</span></span>
           </Link>
@@ -285,8 +285,8 @@ export default function Landing() {
       <footer style={{ borderTop:'1px solid #f3f4f6', padding:'28px 20px' }}>
         <div className="lnd-footer-row" style={{ maxWidth:1100, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ width:27, height:27, borderRadius:8, background:GG, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <span style={{ color:'#fff', fontWeight:900, fontSize:11 }}>P</span>
+            <div style={{ width:27, height:27, borderRadius:8, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+              <img src="/logo-palugada-baru.png" alt="Palugada" style={{ width:'80%', height:'80%', objectFit:'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.style.background=GG; (e.target as HTMLImageElement).parentElement!.innerHTML='<span style="color:#fff;font-weight:900;font-size:11px">P</span>'; }} />
             </div>
             <span style={{ fontSize:15, fontWeight:900, color:'#111827' }}>Palugada<span style={{ color:'#10b981' }}>.</span></span>
           </div>
