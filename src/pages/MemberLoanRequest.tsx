@@ -43,30 +43,57 @@ export default function MemberLoanRequest({ user }: { user: any }) {
     e.preventDefault();
     if (!agreed) { setMessage({ text: 'Harap setujui syarat & ketentuan terlebih dahulu.', type: 'error' }); return; }
     if (principal < 500000) { setMessage({ text: 'Jumlah pinjaman minimal Rp 500.000.', type: 'error' }); return; }
+    if (!purpose.trim()) { setMessage({ text: 'Tujuan pinjaman wajib diisi.', type: 'error' }); return; }
 
     setLoading(true);
     setMessage({ text: '', type: '' });
     try {
+      // Hitung semua field yang dibutuhkan server sebelum dikirim
+      const loanId = `LOAN-${Date.now()}`;
+      const rate = interestRate; // sudah dalam desimal (0.015 = 1.5%)
+      const totalInt = Math.round(principal * rate * months);
+      const totalRepay = principal + totalInt;
+      const today = new Date().toISOString().split('T')[0];
+
       const res = await fetch('/api/loans', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: principal, purpose, duration: months, interestRate: interestRate * 100 })
+        body: JSON.stringify({
+          id: loanId,
+          memberId: user?.id,
+          memberName: user?.name,
+          amount: principal,
+          purpose: purpose.trim(),
+          duration: months,
+          interestRate: rate * 100,       // server menyimpan sebagai persen (1.5, bukan 0.015)
+          totalInterest: totalInt,
+          totalRepayment: totalRepay,
+          status: 'pending',
+          date: today,
+          companyCode: 'PALUGADA',
+          createdBy: user?.id,
+        })
       });
-      if (res.ok) {
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success !== false) {
         setMessage({ text: 'Pengajuan berhasil dikirim! Mohon tunggu persetujuan admin.', type: 'success' });
         setAmount(''); setPurpose(''); setDuration('12'); setAgreed(false);
+        // Refresh daftar pinjaman aktif
         fetch('/api/loans', { credentials: 'include' })
           .then(r => r.json())
-          .then(data => {
-            const arr = Array.isArray(data) ? data : [];
+          .then(loans => {
+            const arr = Array.isArray(loans) ? loans : [];
             setActiveLoans(arr.filter((l: any) =>
               (l.memberId === user?.id || l.member_id === user?.id) &&
               (l.status === 'approved' || l.status === 'pending')
             ));
           });
       } else {
-        setMessage({ text: 'Gagal mengajukan pinjaman. Coba lagi.', type: 'error' });
+        const errMsg = data.error || data.message || 'Gagal mengajukan pinjaman. Coba lagi.';
+        setMessage({ text: errMsg, type: 'error' });
       }
     } catch {
       setMessage({ text: 'Terjadi kesalahan koneksi.', type: 'error' });

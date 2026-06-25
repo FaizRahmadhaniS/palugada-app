@@ -1416,9 +1416,41 @@ app.use('/api', (req, res, next) => {
   });
 
   app.post("/api/loans", async (req, res) => {
-    const { id, memberId, memberName, amount, duration, purpose, status, date, companyCode, createdBy, interestRate, totalInterest, totalRepayment } = req.body;
-    const admin = (req.session as any).user;
+    const sessionUser = (req.session as any).user;
+    if (!sessionUser) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    let { id, memberId, memberName, amount, duration, purpose, status, date,
+          companyCode, createdBy, interestRate, totalInterest, totalRepayment } = req.body;
+
     const now = new Date().toISOString();
+
+    // Auto-generate / fallback untuk field yang mungkin tidak dikirim frontend lama
+    id               = id || `LOAN-${Date.now()}`;
+    memberId         = memberId || sessionUser.id;
+    amount           = Number(amount) || 0;
+    duration         = Number(duration) || 12;
+    interestRate     = Number(interestRate) || 1.5;   // persen (1.5 = 1.5%)
+    date             = date || now.split('T')[0];
+    status           = status || 'pending';
+    companyCode      = companyCode || 'PALUGADA';
+    createdBy        = createdBy || sessionUser.id;
+
+    // Jika memberName kosong, cari dari DB
+    if (!memberName) {
+      const { data: memberData } = await db.from('members').select('name').eq('id', memberId).maybeSingle();
+      memberName = memberData?.name || sessionUser.name || 'Unknown';
+    }
+
+    // Validasi minimal
+    if (amount < 1000) return res.status(400).json({ success: false, message: 'Jumlah pinjaman tidak valid' });
+    if (!purpose || !purpose.trim()) return res.status(400).json({ success: false, message: 'Tujuan pinjaman wajib diisi' });
+
+    // Hitung ulang di server sebagai safety net (jangan sepenuhnya percaya klien)
+    const rate = interestRate / 100;
+    totalInterest   = totalInterest != null ? Number(totalInterest) : Math.round(amount * rate * duration);
+    totalRepayment  = totalRepayment != null ? Number(totalRepayment) : amount + totalInterest;
+
+    const admin = sessionUser;
     const { error } = await db.from('loans').insert({ 
       id, 
       member_id: memberId, 
